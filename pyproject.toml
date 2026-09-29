@@ -1,0 +1,23 @@
+[project]
+name = "kiln-ledger"
+version = "0.1.0"
+description = "Settlement-to-ledger analytics engineering case study on synthetic data for a fictional platform, Kiln."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "dbt-core>=1.10,<1.13",
+    "dbt-bigquery>=1.10,<1.13",
+]
+
+[dependency-groups]
+dev = [
+    "sqlfluff>=3.4,<5",
+    "pre-commit>=4",
+    "pytest>=8",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
