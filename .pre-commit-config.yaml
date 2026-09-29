@@ -1,0 +1,29 @@
+# SQL hooks run through `uv run` so they use the locked sqlfluff version,
+# the same one CI uses, instead of a separate pre-commit-managed install.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      - id: detect-private-key
+  - repo: local
+    hooks:
+      - id: sqlfluff-lint
+        name: sqlfluff lint
+        entry: uv run sqlfluff lint
+        language: system
+        types: [sql]
+        files: ^transform/
+        require_serial: true
+      - id: sqlfluff-fix
+        name: sqlfluff fix
+        entry: uv run sqlfluff fix --force
+        language: system
+        types: [sql]
+        files: ^transform/
+        require_serial: true
+        stages: [manual]
