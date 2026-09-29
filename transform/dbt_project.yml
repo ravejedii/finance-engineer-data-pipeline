@@ -1,0 +1,30 @@
+name: kiln
+version: "0.1.0"
+config-version: 2
+profile: kiln
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+snapshot-paths: ["snapshots"]
+
+clean-targets: ["target", "dbt_packages"]
+
+flags:
+  send_anonymous_usage_stats: false
+
+# Layering: staging (one model per source, clean only) -> intermediate
+# (business logic, not exposed) -> marts (facts and dimensions people query).
+# Custom schemas land as <target dataset>_<layer>, e.g. kiln_dev_staging.
+models:
+  kiln:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: intermediate
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table

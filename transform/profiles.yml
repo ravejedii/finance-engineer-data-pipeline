@@ -1,0 +1,31 @@
+# Committed on purpose: no secrets live here, only env var lookups.
+# Auth is Application Default Credentials (method: oauth), which picks up
+# GOOGLE_APPLICATION_CREDENTIALS (a service-account keyfile path) in CI, or a
+# `gcloud auth application-default login` session on a laptop.
+kiln:
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GCP_PROJECT_ID') }}"
+      dataset: "{{ env_var('DBT_DATASET', 'kiln_dev') }}"
+      location: "{{ env_var('BQ_LOCATION', 'US') }}"
+      threads: 8
+      job_execution_timeout_seconds: 300
+      job_retries: 1
+      priority: interactive
+      # Hard per-query cost ceiling: a query that would scan more fails instead of billing.
+      maximum_bytes_billed: 5000000000
+    ci:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GCP_PROJECT_ID') }}"
+      # One dataset family per PR (ci_pr_<n>), dropped at the end of the run.
+      dataset: "{{ env_var('DBT_DATASET') }}"
+      location: "{{ env_var('BQ_LOCATION', 'US') }}"
+      threads: 8
+      job_execution_timeout_seconds: 300
+      job_retries: 1
+      priority: interactive
+      maximum_bytes_billed: 1000000000
