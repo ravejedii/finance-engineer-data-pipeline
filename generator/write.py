@@ -17,9 +17,12 @@ FX_COLUMNS = ["rate_date", "base_currency", "quote_currency", "rate"]
 def _write(path: Path, columns: list[str], rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=columns, extrasaction="ignore", lineterminator="\n")
-        writer.writeheader()
-        writer.writerows(rows)
+        writer = csv.writer(fh, lineterminator="\n")
+        writer.writerow(columns)
+        for row in rows:
+            values = [row.get(c, "") for c in columns]
+            # A partial write: the line stops early, as if the file was cut off mid-row.
+            writer.writerow(values[: row.get("_truncate_after", len(values))])
 
 
 def write_all(out_dir: Path, truth: Truth, rendered: Rendered, issues: dict, meta: dict) -> dict:

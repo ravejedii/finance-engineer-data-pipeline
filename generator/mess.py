@@ -171,11 +171,13 @@ def apply_file_mess(rendered: Rendered, truth: Truth, seed: int) -> dict:
     n_late = _n(len(movable), 0.005, 3)
     n_restate = _n(len(movable), 0.002, 3)
     n_bad = _n(len(movable), 0.00002, 2)
-    chosen = rng.sample(movable, n_dup + n_late + n_restate + n_bad)
+    n_trunc = _n(len(movable), 0.00001, 1)
+    chosen = rng.sample(movable, n_dup + n_late + n_restate + n_bad + n_trunc)
     a_dup = chosen[:n_dup]
     a_late = chosen[n_dup:n_dup + n_late]
     a_restate = [r for r in chosen[n_dup + n_late:n_dup + n_late + n_restate]]
-    a_bad = chosen[n_dup + n_late + n_restate:]
+    a_bad = chosen[n_dup + n_late + n_restate:n_dup + n_late + n_restate + n_bad]
+    a_trunc = chosen[n_dup + n_late + n_restate + n_bad:]
 
     extra = []
     for row in a_dup:
@@ -229,6 +231,15 @@ def apply_file_mess(rendered: Rendered, truth: Truth, seed: int) -> dict:
                        "balance_transaction_id. They belong in the loader's exceptions table.",
         "count": len(a_bad),
         "original_balance_transaction_ids": sorted(bad_ids),
+    }
+
+    for row in a_trunc:
+        row["_truncate_after"] = 9
+    issues["processor_a_truncated_rows"] = {
+        "description": "Lines cut off after 9 of 14 fields (a partial write). They can't be "
+                       "split into columns, so the loader sends them to its exceptions table.",
+        "count": len(a_trunc),
+        "balance_transaction_ids": sorted(r["balance_transaction_id"] for r in a_trunc),
     }
     rows.extend(extra)
 
