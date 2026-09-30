@@ -19,7 +19,7 @@ permissions:
 env:
   DBT_PROFILES_DIR: ${{ github.workspace }}/transform
   GCP_PROJECT_ID: finance-engineer-data-pipeline
-  GCP_WIF_PROVIDER: projects/REPLACE_WITH_PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/github-repo
+  GCP_WIF_PROVIDER: projects/1077021128262/locations/global/workloadIdentityPools/github/providers/github-repo
   GCP_SERVICE_ACCOUNT: kiln-ci@finance-engineer-data-pipeline.iam.gserviceaccount.com
   BQ_LOCATION: US
 
