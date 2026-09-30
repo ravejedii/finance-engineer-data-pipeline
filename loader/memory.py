@@ -24,9 +24,9 @@ class MemoryWarehouse:
                     exceptions: list[dict], manifest_rows: list[dict]) -> None:
         files = set(file_names)
         table = self.tables[source.table]
-        table[:] = [r for r in table if r["_file_name"] not in files]
+        table[:] = [r for r in table if r["_source_file"] not in files]
         table.extend(rows)
-        self.exceptions[:] = [e for e in self.exceptions if e["_file_name"] not in files]
+        self.exceptions[:] = [e for e in self.exceptions if e["_source_file"] not in files]
         self.exceptions.extend(exceptions)
         self.manifest.extend(manifest_rows)
 
@@ -36,13 +36,13 @@ class MemoryWarehouse:
     def row_counts(self, source: Source) -> dict[str, int]:
         counts: dict[str, int] = defaultdict(int)
         for r in self.tables[source.table]:
-            counts[r["_file_name"]] += 1
+            counts[r["_source_file"]] += 1
         return dict(counts)
 
     def exception_counts(self) -> dict[str, int]:
         counts: dict[str, int] = defaultdict(int)
         for e in self.exceptions:
-            counts[e["_file_name"]] += 1
+            counts[e["_source_file"]] += 1
         return dict(counts)
 
     def snapshot(self, ignore_load_ids: bool = False) -> str:

@@ -74,7 +74,7 @@ def test_changed_file_replaces_only_its_own_rows(raw):
     load(raw, wh)
     target = raw / "processor_a" / "balance_transactions_2025-07-10.csv"
     other_before = [r for r in wh.tables["processor_a_balance_transactions"]
-                    if r["_file_name"] != "processor_a/" + target.name]
+                    if r["_source_file"] != "processor_a/" + target.name]
     lines = target.read_text().splitlines()
     target.write_text("\n".join(lines + [lines[-1]]) + "\n")  # the processor re-sends a longer file
 
@@ -82,10 +82,10 @@ def test_changed_file_replaces_only_its_own_rows(raw):
     changed = [r for r in results if r.status == "replaced"]
     assert [r.file_name for r in changed] == ["processor_a/" + target.name]
     rows = [r for r in wh.tables["processor_a_balance_transactions"]
-            if r["_file_name"] == "processor_a/" + target.name]
+            if r["_source_file"] == "processor_a/" + target.name]
     assert len(rows) == len(lines)  # old rows gone, new file's rows present once
     other_after = [r for r in wh.tables["processor_a_balance_transactions"]
-                   if r["_file_name"] != "processor_a/" + target.name]
+                   if r["_source_file"] != "processor_a/" + target.name]
     assert other_after == other_before
 
 
@@ -117,12 +117,12 @@ def test_short_row_goes_to_exceptions_with_reason(raw):
 
     wh = MemoryWarehouse()
     load(raw, wh)
-    exc = [e for e in wh.exceptions if e["_file_name"] == "bank/" + target.name]
+    exc = [e for e in wh.exceptions if e["_source_file"] == "bank/" + target.name]
     assert len(exc) == 1
     assert exc[0]["line_number"] == 3
     assert "expected 9 fields, got 3" in exc[0]["reason"]
     assert exc[0]["raw_line"] == "BT000000000001,KILN-USD-0001,2025-07-10"
-    rows = [r for r in wh.tables["bank_statements"] if r["_file_name"] == "bank/" + target.name]
+    rows = [r for r in wh.tables["bank_statements"] if r["_source_file"] == "bank/" + target.name]
     assert len(rows) == len(lines) - 2  # header and the bad line excluded
 
 
@@ -136,7 +136,7 @@ def test_header_drift_rejects_the_whole_file(raw):
     result = next(r for r in results if r.file_name == "fx/" + target.name)
     assert result.status == "rejected"
     assert not [r for r in wh.tables["fx_reference_rates"]
-                if r["_file_name"] == "fx/" + target.name]
+                if r["_source_file"] == "fx/" + target.name]
     m = next(m for m in wh.manifest if m["file_name"] == "fx/" + target.name)
     assert m["status"] == "rejected"
     assert "quote_ccy" in m["reason"]
@@ -178,8 +178,8 @@ def test_lineage_columns_on_every_row(raw):
     load(raw, wh)
     for rows in wh.tables.values():
         for r in rows:
-            assert r["_file_name"] and r["_load_id"] and r["_loaded_at"]
-            assert isinstance(r["_row_number"], int) and r["_row_number"] >= 2
+            assert r["_source_file"] and r["_load_id"] and r["_loaded_at"]
+            assert isinstance(r["_source_line"], int) and r["_source_line"] >= 2
 
 
 # ---------------------------------------------------------------- backfill
@@ -218,4 +218,18 @@ def test_verify_catches_rows_that_went_missing(raw):
     victim = wh.tables["bank_statements"].pop()
     problems = verify(wh)
     assert len(problems) == 1
-    assert victim["_file_name"] in problems[0]
+    assert victim["_source_file"] in problems[0]
+
+
+def test_bigquery_schemas_avoid_reserved_column_prefixes():
+    """BigQuery rejects field names starting with these (case-insensitive) prefixes.
+    CI found this the hard way with `_source_file`; this keeps it from coming back."""
+    from loader.bigquery import EXCEPTION_FIELDS, MANIFEST_FIELDS, source_schema
+    from loader.sources import SOURCES
+
+    reserved = ("_PARTITION", "_TABLE_", "_FILE_", "_ROW_TIMESTAMP", "__ROOT__",
+                "_COLIDENTIFIER", "__DREMEL_PK_MERGED_STRUCT_")
+    schemas = [source_schema(s) for s in SOURCES] + [EXCEPTION_FIELDS, MANIFEST_FIELDS]
+    for schema in schemas:
+        for field in schema:
+            assert not field.name.upper().startswith(reserved), field.name

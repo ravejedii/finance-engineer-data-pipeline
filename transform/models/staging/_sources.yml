@@ -2,7 +2,7 @@ version: 2
 
 # Raw tables written by the Python loader (loader/). Every column is STRING,
 # exactly as the file said; staging does the typing. Each row carries lineage:
-# _file_name, _row_number, _load_id, _loaded_at.
+# _source_file, _source_line, _load_id, _loaded_at.
 sources:
   - name: raw
     schema: "{{ target.schema }}_raw"

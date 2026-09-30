@@ -71,7 +71,7 @@ def load(raw_dir: Path, warehouse: Warehouse, start: date | None = None,
                 results.append(FileResult(file_name, source.table, "skipped"))
                 continue
 
-            meta = {"_file_name": file_name, "_load_id": load_id, "_loaded_at": loaded_at}
+            meta = {"_source_file": file_name, "_load_id": load_id, "_loaded_at": loaded_at}
             if decode_error:
                 rows, exceptions, reason = [], [], decode_error
             else:
@@ -129,7 +129,7 @@ def _parse(source: Source, text: str, meta: dict) -> tuple[list[dict], list[dict
                 "raw_line": lines[line_number - 1] if line_number <= len(lines) else "",
             })
             continue
-        rows.append({**dict(zip(names, fields)), **meta, "_row_number": line_number})
+        rows.append({**dict(zip(names, fields)), **meta, "_source_line": line_number})
     return rows, exceptions, None
 
 

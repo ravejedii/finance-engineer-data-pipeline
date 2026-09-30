@@ -19,13 +19,13 @@ from google.cloud import bigquery
 from loader.sources import SOURCES, Source, sanitize
 
 META_FIELDS = [
-    bigquery.SchemaField("_file_name", "STRING", mode="REQUIRED"),
-    bigquery.SchemaField("_row_number", "INT64", mode="REQUIRED"),
+    bigquery.SchemaField("_source_file", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("_source_line", "INT64", mode="REQUIRED"),
     bigquery.SchemaField("_load_id", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("_loaded_at", "TIMESTAMP", mode="REQUIRED"),
 ]
 EXCEPTION_FIELDS = [
-    bigquery.SchemaField("_file_name", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("_source_file", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("_load_id", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("_loaded_at", "TIMESTAMP", mode="REQUIRED"),
     bigquery.SchemaField("source", "STRING", mode="REQUIRED"),
@@ -68,10 +68,10 @@ class BigQueryWarehouse:
         self.client.create_dataset(ds, exists_ok=True)
         for source in SOURCES:
             table = bigquery.Table(self._ref(source.table), schema=source_schema(source))
-            table.clustering_fields = ["_file_name"]
+            table.clustering_fields = ["_source_file"]
             self.client.create_table(table, exists_ok=True)
         exc = bigquery.Table(self._ref("load_exceptions"), schema=EXCEPTION_FIELDS)
-        exc.clustering_fields = ["_file_name"]
+        exc.clustering_fields = ["_source_file"]
         self.client.create_table(exc, exists_ok=True)
         self.client.create_table(
             bigquery.Table(self._ref("load_manifest"), schema=MANIFEST_FIELDS), exists_ok=True
@@ -93,16 +93,16 @@ class BigQueryWarehouse:
 
     def row_counts(self, source: Source) -> dict[str, int]:
         rows = self._query(
-            f"select _file_name, count(*) as n from `{self._ref(source.table)}` group by _file_name"
+            f"select _source_file, count(*) as n from `{self._ref(source.table)}` group by _source_file"
         )
-        return {r["_file_name"]: r["n"] for r in rows}
+        return {r["_source_file"]: r["n"] for r in rows}
 
     def exception_counts(self) -> dict[str, int]:
         rows = self._query(
-            f"select _file_name, count(*) as n from `{self._ref('load_exceptions')}` "
-            "group by _file_name"
+            f"select _source_file, count(*) as n from `{self._ref('load_exceptions')}` "
+            "group by _source_file"
         )
-        return {r["_file_name"]: r["n"] for r in rows}
+        return {r["_source_file"]: r["n"] for r in rows}
 
     def _scratch(self, rows: list[dict], schema: list[bigquery.SchemaField]) -> str:
         ref = self._ref(f"scratch_{uuid.uuid4().hex[:12]}")
@@ -125,8 +125,8 @@ class BigQueryWarehouse:
         try:
             statements = [
                 "begin transaction;",
-                f"delete from `{self._ref(source.table)}` where _file_name in ({files});",
-                f"delete from `{self._ref('load_exceptions')}` where _file_name in ({files});",
+                f"delete from `{self._ref(source.table)}` where _source_file in ({files});",
+                f"delete from `{self._ref('load_exceptions')}` where _source_file in ({files});",
             ]
             for target, batch, schema in (
                 (source.table, rows, source_schema(source)),

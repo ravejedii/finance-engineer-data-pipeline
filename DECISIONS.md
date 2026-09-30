@@ -210,7 +210,7 @@ alternatives considered, why, date.
 ## 015. The loader lands files verbatim; the file is the unit of idempotency
 
 - **Decision:** Every raw column is `STRING`, exactly as delivered, plus
-  lineage columns (`_file_name`, `_row_number`, `_load_id`, `_loaded_at`).
+  lineage columns (`_source_file`, `_source_line`, `_load_id`, `_loaded_at`).
   Each file is fingerprinted with SHA-256 and recorded in `load_manifest`:
   - same name and same checksum: skipped;
   - same name and a new checksum: that file's rows are replaced as a unit.
@@ -223,6 +223,10 @@ alternatives considered, why, date.
   which copy is current. Replace-by-file keeps raw equal to "the latest
   version of every file we received", and that can be verified
   (`loader verify`).
+- **Naming note:** The lineage column is `_source_file`, not `_file_name`,
+  because BigQuery reserves column names starting with `_FILE_` (as well as
+  `_PARTITION`, `_TABLE_` and a few others). The first CI run caught this,
+  and a unit test now guards every schema against those prefixes.
 - **Date:** 2026-09-30
 
 ## 016. Two kinds of bad rows, caught in two places
