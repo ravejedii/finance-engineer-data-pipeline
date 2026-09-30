@@ -1,0 +1,41 @@
+version: 2
+
+# Raw tables written by the Python loader (loader/). Every column is STRING,
+# exactly as the file said; staging does the typing. Each row carries lineage:
+# _file_name, _row_number, _load_id, _loaded_at.
+sources:
+  - name: raw
+    schema: "{{ target.schema }}_raw"
+    description: Files as delivered, landed verbatim by the loader.
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        warn_after: {count: 26, period: hour}
+        error_after: {count: 50, period: hour}
+    tables:
+      - name: processor_a_balance_transactions
+        description: Processor A daily balance-transaction reports (UTC, decimal USD strings).
+      - name: processor_a_payouts
+        description: Processor A payout status log; one row per status change.
+      - name: processor_b_settlement_details
+        description: Processor B daily settlement batches (CET/CEST local time, EUR net).
+      - name: bank_statements
+        description: Kiln bank statement lines for the USD and EUR operating accounts.
+      - name: fx_reference_rates
+        description: Business-day FX reference rates, units of currency per 1 USD.
+      - name: app_db_plans
+      - name: app_db_plan_fixed_fees
+      - name: app_db_sellers
+      - name: app_db_seller_plan_changes
+      - name: app_db_products
+      - name: app_db_orders
+      - name: app_db_refunds
+      - name: app_db_seller_payouts
+      - name: load_manifest
+        description: One row per file per load attempt. Latest row per file is current.
+        config:
+          loaded_at_field: loaded_at
+      - name: load_exceptions
+        description: Lines the loader could not split into the contracted columns.
+        config:
+          freshness: null
