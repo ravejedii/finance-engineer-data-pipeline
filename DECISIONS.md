@@ -137,3 +137,72 @@ alternatives considered, why, date.
   development machine needs its own auth (for example
   `gcloud auth application-default login`).
 - **Date:** 2026-09-30
+
+## 009. Generator simulates the truth first, then renders reports from it
+
+- **Decision:** A day-by-day simulation of what actually happened at Kiln
+  produces the truth. Each system's files are rendered from that truth, and
+  the mess is applied afterward, with every affected row logged.
+- **Alternatives:** Generating report rows directly, per file, with random
+  values.
+- **Why:** Tests need a correct answer. When the generator knows it made
+  exactly 794 duplicates with these IDs, Phase 3 can prove it removed
+  exactly those, and Phase 5 can prove each reconciliation break is real.
+  Generating rows directly gives refunds with no matching charge and
+  balances that never add up, so nothing could be reconciled to a known
+  answer.
+- **Date:** 2026-09-30
+
+## 010. Standard library only for the generator
+
+- **Decision:** `random`, `decimal`, `csv`, `zoneinfo`. No pandas, numpy,
+  or Faker.
+- **Why:** 350k orders take about 25 s in plain Python. That's fast enough,
+  and it keeps money in `Decimal` and integers, never floats in a DataFrame.
+  Each component gets its own seeded random stream derived from
+  (seed, name), so adding a random draw in one place never shifts another
+  component's output.
+- **Date:** 2026-09-30
+
+## 011. Raw formats are deliberately different per source
+
+- **Decision:** Processor reports print decimal major units (`12.34`,
+  `3736` for JPY). The app DB stores integer minor units. Processor B
+  reports local CET/CEST time with a `TimeZone` column. FX is quoted as
+  units per USD.
+- **Why:** This is what real sources look like, and normalizing it
+  (currency-aware minor-unit conversion, timezone conversion that handles
+  DST, rate inversion) is the job of the staging layer. Pre-cleaned data
+  would leave nothing to learn.
+- **Date:** 2026-09-30
+
+## 012. Rare events are dialed up at small scale
+
+- **Decision:** The small scale raises the dispute rate (2% vs 0.5%), the
+  processor A payout failure rate (3% vs 1%), and seller churn (90-day vs
+  320-day mean lifetime).
+- **Why:** Four months of CI data at realistic rates might contain zero
+  failed payouts or negative balances, and then the tests would prove
+  nothing. A test (`test_small_scale_exercises_every_issue`) fails if any
+  issue count drops to zero.
+- **Cost of this choice:** Small-scale business metrics aren't realistic.
+  Analysis uses full scale only.
+- **Date:** 2026-09-30
+
+## 013. Scenario overlay kept separate from the baseline model
+
+- **Decision:** Each stochastic stage of the simulation passes its
+  parameters through `generator/scenarios.py`, which may adjust them.
+- **Why:** The baseline model reads cleanly without it. What the overlay
+  contains is intentionally undocumented until Phase 7.
+- **Date:** 2026-09-30
+
+## 014. Known simplification: processor A payout IDs are filled in retroactively
+
+- **Decision:** A charge's `automatic_payout_id` is filled in even in the
+  daily file for the day it was created, although the payout that sweeps it
+  happens two days later.
+- **Why:** It keeps payout-to-transaction matching possible from the files
+  alone. A real itemized report run daily would leave the field blank
+  until the payout happens.
+- **Date:** 2026-09-30
