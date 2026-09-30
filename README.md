@@ -45,12 +45,13 @@ uv run dbt build --profiles-dir .
 1. A GCP project **with billing enabled** (the sandbox can't run the
    `merge` statements that incremental models need; see DECISIONS.md).
 2. A budget with an email alert, plus a custom quota on "Query usage per
-   day". The budget alert only notifies; the quota and the profile's
-   `maximum_bytes_billed` are what actually stop spend.
-3. A service account with `BigQuery Data Editor` and `BigQuery Job User`
-   on the project, and a JSON key.
-4. In GitHub: repository secret `GCP_SA_KEY` (the key JSON) and repository
-   variable `GCP_PROJECT_ID`. Optional variable `BQ_LOCATION` (default `US`).
+   day" (IAM & Admin → Quotas). The budget alert only notifies; the quota
+   and the profile's `maximum_bytes_billed` are what actually stop spend.
+3. Run [`scripts/setup_gcp_wif.sh`](scripts/setup_gcp_wif.sh) in Cloud
+   Shell. It creates a least-privilege service account and a Workload
+   Identity Federation provider that trusts only this repository's GitHub
+   Actions. No service-account key exists anywhere.
+4. Put the provider path it prints into `.github/workflows/ci.yml`.
 
 CI runs each PR against its own `ci_pr_<n>` datasets and drops them at
 the end of the run.

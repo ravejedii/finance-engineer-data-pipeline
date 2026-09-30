@@ -84,7 +84,7 @@ alternatives considered, why, date.
   `ci_pr_12`, and it refuses to run on any target other than `ci`.
 - **Date:** 2026-09-29
 
-## 006. CI authenticates with a service-account key (for now)
+## 006. CI authenticates with a service-account key (for now) — superseded by 008
 
 - **Decision:** JSON key stored as the `GCP_SA_KEY` GitHub secret, with
   the least-privilege roles `BigQuery Data Editor` and `BigQuery Job User`.
@@ -105,3 +105,35 @@ alternatives considered, why, date.
 - **Why:** With `uv run`, the laptop, pre-commit, and CI all run the same
   sqlfluff version, so a rule can't pass locally and fail in CI.
 - **Date:** 2026-09-29
+
+## 008. CI authenticates through Workload Identity Federation (supersedes 006)
+
+- **Decision:** GitHub Actions exchanges its OIDC token for short-lived
+  GCP credentials and impersonates `kiln-ci`, a service account with only
+  `BigQuery Data Editor` and `BigQuery Job User`. The provider's attribute
+  condition accepts tokens from this one repository only. No key exists,
+  and the workflow holds no secrets.
+- **Alternatives:** (a) A service-account JSON key (decision 006).
+  (b) Turning off the org policy that blocks key creation.
+  (c) Direct WIF, which grants BigQuery roles to the GitHub identity
+  itself with no service account in between.
+- **Why:** The GCP organization enforces
+  `iam.disableServiceAccountKeyCreation` (Google's secure-by-default
+  setting for new organizations), so (a) was blocked. Turning the policy
+  off to work around it is the wrong direction. WIF has no long-lived
+  credential to leak, which matters because the repo will be public.
+  (c) works, but not every Google API supports it yet; service-account
+  impersonation is the most widely supported path.
+- **Public-repo safety:** Two separate protections. (1) The attribute
+  condition rejects tokens minted by *other* repositories. (2) It does
+  **not** stop PRs from forks, because those run in this repo's context
+  and carry this repo's name. What stops them is GitHub itself: under
+  `pull_request` it caps a fork's workflow permissions at read-only, so
+  it can't get an OIDC token. Hence the rule: never trigger this workflow
+  on `pull_request_target`, which runs fork code with the base repo's
+  permissions.
+- **Cost of this choice:** More one-time setup (a pool, a provider, an IAM
+  binding). Credentials exist only inside GitHub Actions, so a
+  development machine needs its own auth (for example
+  `gcloud auth application-default login`).
+- **Date:** 2026-09-30
