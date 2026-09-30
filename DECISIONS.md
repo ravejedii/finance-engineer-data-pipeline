@@ -206,3 +206,72 @@ alternatives considered, why, date.
   alone. A real itemized report run daily would leave the field blank
   until the payout happens.
 - **Date:** 2026-09-30
+
+## 015. The loader lands files verbatim; the file is the unit of idempotency
+
+- **Decision:** Every raw column is `STRING`, exactly as delivered, plus
+  lineage columns (`_file_name`, `_row_number`, `_load_id`, `_loaded_at`).
+  Each file is fingerprinted with SHA-256 and recorded in `load_manifest`:
+  - same name and same checksum: skipped;
+  - same name and a new checksum: that file's rows are replaced as a unit.
+- **Alternatives:** (a) `merge` on business keys at load time. (b) Typing
+  columns in the loader. (c) Append-only raw with dedupe downstream.
+- **Why:** (a) would silently remove the duplicates and restated rows that
+  Phase 3 must prove it handles; raw should keep the mess. (b) means one
+  `N/A` fails a whole file, and the loader starts holding business rules.
+  (c) grows forever when a file is re-sent, and every consumer has to know
+  which copy is current. Replace-by-file keeps raw equal to "the latest
+  version of every file we received", and that can be verified
+  (`loader verify`).
+- **Date:** 2026-09-30
+
+## 016. Two kinds of bad rows, caught in two places
+
+- **Decision:** The loader rejects only what it can't split: a line with
+  the wrong number of fields goes to `load_exceptions` with the line number,
+  reason and raw text, and a file whose header drifts is rejected whole.
+  Bad *values* (`N/A`, decimal commas, empty IDs) land in raw and are
+  routed to exceptions by staging in Phase 3.
+- **Why:** Structure is the loader's contract; meaning is staging's. Raw
+  stays replayable: if a staging rule was wrong, fix it and rebuild,
+  without re-fetching files.
+- **Date:** 2026-09-30
+
+## 017. BigQuery writes: free load jobs into scratch tables, then one transaction
+
+- **Decision:** For each source, the new files' rows, exceptions and
+  manifest entries go to scratch tables through load jobs. Then one
+  multi-statement transaction deletes those files' old rows, inserts the
+  new ones, and appends to the manifest. Scratch tables are dropped
+  afterwards.
+- **Alternatives:** Streaming inserts; a transaction per file; loading
+  straight into the target table.
+- **Why:** Load jobs cost nothing, and streaming inserts are billed and
+  can't be deleted by DML right away (the streaming buffer). One
+  transaction per source makes the delete-and-insert all-or-nothing, so a
+  crash can't leave a file half-replaced. Batching by source rather than by
+  file matters because a full-scale load is about 2,400 files, and a few
+  seconds per transaction times 2,400 would take hours.
+- **Date:** 2026-09-30
+
+## 018. Freshness is measured on load time, not business time
+
+- **Decision:** `dbt source freshness` checks `_loaded_at`, warning at 26
+  hours and erroring at 50 hours.
+- **Why:** The question freshness answers is "did the pipeline run?"
+  Business timestamps in synthetic data are frozen in 2025 and would always
+  fail. On a real platform I'd add a second check on business time per
+  source (for example, the newest processor A `created_utc` is less than a
+  day old) to catch a feed that loads on schedule but delivers stale files.
+- **Date:** 2026-09-30
+
+## 019. Backfill covers dated sources only
+
+- **Decision:** `loader load --start --end` selects files by their business
+  date. The date comes from the filename, or for processor B from the
+  batch's rows, since its files are named by batch number. App DB extracts
+  are undated full snapshots and load only in an unranged run.
+- **Why:** A range should mean "the days in this range", so re-running a
+  week can't silently reload today's app DB snapshot. A test proves a
+  one-shot range load equals loading the same days one at a time.
+- **Date:** 2026-09-30

@@ -69,6 +69,17 @@ jobs:
       - name: dbt debug
         working-directory: transform
         run: uv run dbt debug
+      - name: Generate small-scale raw files
+        run: uv run python -m generator --scale small
+      - name: Load raw files into BigQuery
+        run: uv run python -m loader load
+      - name: Re-load must be a no-op (idempotency)
+        run: uv run python -m loader load --expect-noop
+      - name: Warehouse counts match the load manifest
+        run: uv run python -m loader verify
+      - name: dbt source freshness
+        working-directory: transform
+        run: uv run dbt source freshness
       - name: dbt build
         working-directory: transform
         run: uv run dbt build

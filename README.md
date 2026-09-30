@@ -8,7 +8,7 @@ FX, bad debt) in dbt, and reconcile reported numbers back to source.
 creator-commerce platform, and both processors are fictional. No real
 company, person, or transaction appears anywhere.
 
-> Status: Phase 0 (setup). The full case study write-up comes in Phase 8.
+> Status: Phase 2 (ingestion). The full case study write-up comes in Phase 8.
 
 ## Stack
 
@@ -35,8 +35,13 @@ export GCP_PROJECT_ID=<your-project>
 export GOOGLE_APPLICATION_CREDENTIALS=<path-to-service-account-keyfile>  # or: gcloud auth application-default login
 export DBT_DATASET=kiln_dev_<yourname>   # optional; default kiln_dev
 
+uv run python -m generator --scale small   # synthetic raw files -> data/raw
+uv run python -m loader load               # -> BigQuery dataset <DBT_DATASET>_raw
+uv run python -m loader verify             # warehouse counts == load manifest
+
 cd transform
 uv run dbt debug --profiles-dir .
+uv run dbt source freshness --profiles-dir .
 uv run dbt build --profiles-dir .
 ```
 
