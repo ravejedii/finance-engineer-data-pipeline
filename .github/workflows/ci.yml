@@ -61,7 +61,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked
-      - uses: google-github-actions/auth@v2
+      - id: auth
+        uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
           service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
@@ -72,6 +73,7 @@ jobs:
         working-directory: transform
         run: uv run dbt build
       - name: Drop this run's CI datasets
-        if: always()
+        # Only when auth succeeded: before that, nothing can have been created.
+        if: always() && steps.auth.outcome == 'success'
         working-directory: transform
         run: uv run dbt run-operation drop_ci_datasets
