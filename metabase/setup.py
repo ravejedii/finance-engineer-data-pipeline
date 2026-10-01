@@ -1,5 +1,5 @@
 """Configure a local Metabase OSS for Kiln: admin user, BigQuery connection,
-and the two dashboards in metabase/dashboards.py. Idempotent: re-running
+and the dashboards in metabase/dashboards.py. Idempotent: re-running
 replaces the Kiln dashboards and their questions instead of duplicating them.
 
     uv run python -m metabase.setup

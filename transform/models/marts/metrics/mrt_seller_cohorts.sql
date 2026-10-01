@@ -4,8 +4,10 @@
   since joining:
     seller_retention  = sellers with at least one order that month / cohort size
     revenue_retention = cohort's platform fee revenue that month / its revenue
-                        in month 0 (its first month). Above 1.0 means the
-                        surviving sellers grew faster than churn removed revenue.
+                        in month 1, its first full month. Month 0 is partial (a
+                        seller joining on the 28th has three days), so it is not
+                        the baseline. Above 1.0 means the surviving sellers grew
+                        faster than churn removed revenue.
 #}
 with sellers as (
     select
@@ -42,12 +44,12 @@ with_base as (
         activity.active_sellers,
         activity.net_revenue_usd_minor,
         date_diff(activity.activity_month, activity.cohort_month, month) as months_since_join,
-        -- Null when the cohort's month 0 is before the data window (no baseline).
+        -- Null when the cohort's month 1 is before the data window (no baseline).
         max(if(
-            activity.activity_month = activity.cohort_month,
+            activity.activity_month = date_add(activity.cohort_month, interval 1 month),
             activity.net_revenue_usd_minor, null)) over (
             partition by activity.cohort_month
-        ) as month_zero_revenue_usd_minor
+        ) as month_one_revenue_usd_minor
     from activity
     inner join cohort_sizes
         on activity.cohort_month = cohort_sizes.cohort_month
@@ -57,5 +59,9 @@ with_base as (
 select
     *,
     safe_divide(active_sellers, cohort_size) as seller_retention,
-    safe_divide(net_revenue_usd_minor, month_zero_revenue_usd_minor) as revenue_retention
+    if(
+        months_since_join >= 1,
+        safe_divide(net_revenue_usd_minor, month_one_revenue_usd_minor),
+        null
+    ) as revenue_retention
 from with_base

@@ -584,8 +584,8 @@ alternatives considered, why, date.
 - **Decision:** Join month (`sellers.created_at`). Sellers who never sell stay
   in the denominator, so activation failure shows up as low retention instead
   of disappearing.
-- **Known weakness:** Month 0 is partial, which inflates net revenue retention
-  for later months. Documented in METRICS.md rather than hidden.
+- **Known weakness:** Month 0 is partial, which inflated net revenue retention
+  for later months. Fixed in 046: NRR is now anchored on month 1.
 - **Date:** 2026-10-01
 
 ## 043. Buyer region is a macro, not a seed
@@ -625,4 +625,25 @@ alternatives considered, why, date.
   as it takes to create the key.
 - **Status:** Waiting on the project owner. Changing an org security policy is
   their call, not the pipeline's.
+- **Date:** 2026-10-01
+
+## 046. Seller churn is behavioral; LTV is contribution to date
+
+- **Problem:** The job's metric list includes churn and LTV/CAC. Retention
+  existed only as cohort tables, and NRR was inflated by a partial month 0.
+- **Options for churn:** The app database's `churned_at` (an account
+  closure), or behavior: no orders for a fixed window.
+- **Decision:** Churn is behavioral: three full calendar months with no
+  orders. Closures are kept as their own series beside it, because finance
+  cares when revenue stops, and revenue can stop without an account closing. One or two quiet months is *paused*, so seasonal sellers are not
+  counted as churn. Months without three complete months after them have a
+  null churn rate rather than an understated one.
+- **Shape:** `mrt_seller_months` (one row per seller per active month, with
+  arrival and departure) feeds `mrt_seller_churn_monthly` and
+  `mrt_seller_ltv_cohorts`. A singular test asserts that every month's
+  arrivals and departures account for every seller.
+- **LTV:** Cumulative contribution per seller who joined, to date. It is not
+  projected, because a projection on synthetic data would be a modeling
+  choice dressed up as a number. CAC is not computed: there is no spend data.
+- **NRR:** Re-anchored from month 0 to month 1, the first full month.
 - **Date:** 2026-10-01

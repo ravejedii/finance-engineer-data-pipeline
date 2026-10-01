@@ -245,6 +245,80 @@ models:
       - {name: cohort_size, description: Sellers who joined in the cohort month.}
       - {name: active_sellers, description: Cohort sellers with at least one order in activity_month.}
       - {name: net_revenue_usd_minor, description: Cohort platform fee revenue in activity_month.}
-      - {name: month_zero_revenue_usd_minor, description: Cohort revenue in its first month; null if before the data window.}
+      - {name: month_one_revenue_usd_minor, description: Cohort revenue in its first full month (month 1); null if before the data window.}
       - {name: seller_retention, description: active_sellers / cohort_size.}
-      - {name: revenue_retention, description: Net revenue / month-0 revenue (net revenue retention).}
+      - {name: revenue_retention, description: Net revenue / month-1 revenue (net revenue retention); null for month 0.}
+
+  - name: mrt_seller_months
+    description: >
+      One row per seller per month with at least one order, with how the seller
+      arrived in the month and what happened after it. Churn = three full
+      months with no orders. Definitions in METRICS.md.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "concat(cast(seller_id as string), '|', cast(activity_month as string))"
+    columns:
+      - {name: seller_id, description: The seller., data_tests: [not_null]}
+      - {name: activity_month, description: Month with at least one order., data_tests: [not_null]}
+      - {name: cohort_month, description: Month the seller joined Kiln.}
+      - {name: plan_name, description: Plan on the seller's latest order of the month.}
+      - {name: orders, description: Orders in the month.}
+      - {name: net_revenue_usd_minor, description: Platform fee revenue in USD cents.}
+      - {name: contribution_usd_minor, description: Contribution in USD cents.}
+      - {name: previous_active_month, description: The seller's previous month with orders.}
+      - {name: next_active_month, description: The seller's next month with orders.}
+      - name: arrival
+        description: new, first_seen, retained or reactivated.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [new, first_seen, retained, reactivated]
+      - name: departure
+        description: retained, paused, churned or undetermined.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [retained, paused, churned, undetermined]
+      - {name: departure_month, description: First month after activity_month; departures are counted here.}
+
+  - name: mrt_seller_churn_monthly
+    description: >
+      Seller churn by month: arrivals, departures, behavioral churn rates and
+      account closures from the app database. One row per complete month after
+      the first.
+    columns:
+      - name: activity_month
+        description: First day of the month.
+        data_tests: [unique, not_null]
+      - {name: sellers_at_start, description: Sellers active the month before.}
+      - {name: active_sellers, description: Sellers with at least one order this month.}
+      - {name: new_sellers, description: First active month; joined inside the order window.}
+      - {name: first_seen_sellers, description: First active month in the data; joined before it.}
+      - {name: retained_sellers, description: Active this month and the month before.}
+      - {name: reactivated_sellers, description: Active again after one or more inactive months.}
+      - {name: retained_from_start, description: Sellers at start still active this month (equals retained_sellers).}
+      - {name: paused_sellers, description: Sellers at start inactive this month but back within three months.}
+      - {name: churned_sellers, description: Sellers at start with no orders this month or the next two.}
+      - {name: undetermined_sellers, description: Sellers at start whose next three months are not yet complete.}
+      - {name: start_net_revenue_usd_minor, description: Last month's net revenue from sellers at start.}
+      - {name: churned_net_revenue_usd_minor, description: Last month's net revenue from the sellers who churned.}
+      - {name: account_closures, description: Sellers whose app account was closed (churned_at) this month.}
+      - {name: seller_churn_rate, description: Churned / sellers at start; null while any are undetermined.}
+      - {name: revenue_churn_rate, description: Churned sellers' last-month revenue / all sellers' last-month revenue.}
+
+  - name: mrt_seller_ltv_cohorts
+    description: >
+      Cumulative net revenue and contribution per joined seller, by joining
+      cohort and months since joining. Observed to date, not projected; only
+      cohorts that joined inside the order window.
+    columns:
+      - {name: cohort_month, description: Month the sellers joined Kiln.}
+      - {name: activity_month, description: Month being measured.}
+      - {name: months_since_join, description: activity_month - cohort_month in months.}
+      - {name: cohort_size, description: Sellers who joined in the cohort month.}
+      - {name: net_revenue_usd_minor, description: Cohort net revenue in the month.}
+      - {name: contribution_usd_minor, description: Cohort contribution in the month.}
+      - {name: cumulative_net_revenue_usd_minor, description: Cohort net revenue through this month.}
+      - {name: cumulative_contribution_usd_minor, description: Cohort contribution through this month.}
+      - {name: ltv_per_seller_usd_minor, description: Cumulative contribution / cohort size (LTV to date).}

@@ -6,7 +6,8 @@ Postgres container stores only Metabase's own dashboards and settings.
 | Dashboard | Questions |
 |---|---|
 | Kiln: Finance close | trial balance check, income statement, three-way recon status, payout recon, order-to-settlement matching, missing processor B batches, realized and unrealized FX, bad-debt allowance |
-| Kiln: Unit economics | GMV and net revenue, take rate and contribution margin, margin by region, economics by processor and plan, refund and dispute rates, seller retention and NRR by cohort |
+| Kiln: Unit economics | GMV and net revenue, take rate and contribution margin, margin by region, economics by processor and plan, refund and dispute rates |
+| Kiln: Churn and retention | seller and revenue churn rates, seller flows (new, returning, churned), churn vs account closures, churn by plan, LTV to date, seller retention and NRR by cohort |
 
 Every question is native BigQuery SQL over the `kiln_marts` dataset, defined
 in `dashboards.py`, so the dashboards are code-reviewed and reproducible.
