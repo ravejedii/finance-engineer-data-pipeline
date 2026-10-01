@@ -1,0 +1,142 @@
+version: 2
+
+models:
+  - name: fct_general_ledger
+    description: >
+      Complete general ledger: transaction postings (fct_ledger_entries) plus
+      month-end close entries (FX remeasurement and bad-debt allowance).
+    columns:
+      - name: ledger_line_id
+        data_tests: [unique, not_null]
+      - name: account_code
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('chart_of_accounts')
+                field: account_code
+      - name: amount_usd_minor
+        description: Signed USD cents; positive = debit.
+        data_tests:
+          - sums_to_zero:
+              arguments:
+                group_by: journal_entry_id
+          - sums_to_zero:
+              name: general_ledger_balances_by_month
+              arguments:
+                group_by: date_trunc(posting_date, month)
+
+  - name: fct_trial_balance
+    description: Monthly trial balance, one row per account per month-end.
+    columns:
+      - name: closing_balance_usd_minor
+        description: Cumulative balance at month-end, debit-positive.
+        data_tests:
+          - sums_to_zero:
+              name: trial_balance_nets_to_zero
+              arguments:
+                group_by: month_end
+      - name: period_net_usd_minor
+        data_tests:
+          - sums_to_zero:
+              name: trial_balance_period_activity_nets_to_zero
+              arguments:
+                group_by: month_end
+
+  - name: fct_seller_balance_aging
+    description: >
+      Seller balances at each month-end with days negative. Balances negative
+      for at least var('bad_debt_aging_days') days are fully reserved.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "concat(cast(seller_id as string), '|', cast(month_end as string))"
+
+  - name: rpt_close_package
+    description: Monthly income statement and balance sheet in presentation form.
+
+unit_tests:
+  - name: charge_books_realized_fx_as_the_balancing_line
+    description: >
+      EUR 100.00 order, EUR 7.30 platform fee, booked at 0.925 EUR per USD.
+      Processor A settled $107.00 gross with a $3.40 fee. Kiln booked the order
+      at $108.11, so the $1.11 it didn't receive is a realized FX loss.
+    model: int_journal_lines__settlements
+    given:
+      - input: ref('int_settlement_events')
+        rows:
+          - {processor: processor_a, settlement_event_id: txn_1, event_type: charge,
+             occurred_at: "2025-07-10 12:00:00", event_date: "2025-07-10", kiln_order_id: 1,
+             processor_reference: ch_1, presentment_currency: EUR,
+             presentment_amount_minor: 10000, settlement_currency: USD,
+             gross_settlement_minor: 10700, fee_minor: 340, net_settlement_minor: 10360}
+      - input: ref('stg_app_db__orders')
+        rows:
+          - {order_id: 1, seller_id: 7, currency: EUR, amount_minor: 10000,
+             platform_fee_minor: 730}
+      - input: ref('int_fx_rates_daily')
+        rows:
+          - {currency: EUR, rate_date: "2025-07-10", units_per_usd: 0.925}
+          - {currency: USD, rate_date: "2025-07-10", units_per_usd: 1}
+    expect:
+      rows:
+        - {account_code: "1000", amount_usd_minor: 10360}
+        - {account_code: "5000", amount_usd_minor: 340}
+        - {account_code: "2000", amount_usd_minor: -10022}
+        - {account_code: "4000", amount_usd_minor: -789}
+        - {account_code: "5200", amount_usd_minor: 111}
+
+  - name: charge_with_no_kiln_order_goes_to_suspense
+    model: int_journal_lines__settlements
+    given:
+      - input: ref('int_settlement_events')
+        rows:
+          - {processor: processor_a, settlement_event_id: txn_2, event_type: charge,
+             occurred_at: "2025-07-10 12:00:00", event_date: "2025-07-10", kiln_order_id: 999,
+             processor_reference: ch_2, presentment_currency: EUR,
+             presentment_amount_minor: 10000, settlement_currency: USD,
+             gross_settlement_minor: 10700, fee_minor: 340, net_settlement_minor: 10360}
+      - input: ref('stg_app_db__orders')
+        rows:
+          - {order_id: 1, seller_id: 7, currency: EUR, amount_minor: 10000,
+             platform_fee_minor: 730}
+      - input: ref('int_fx_rates_daily')
+        rows:
+          - {currency: EUR, rate_date: "2025-07-10", units_per_usd: 0.925}
+          - {currency: USD, rate_date: "2025-07-10", units_per_usd: 1}
+    expect:
+      rows:
+        - {account_code: "1000", amount_usd_minor: 10360}
+        - {account_code: "5000", amount_usd_minor: 340}
+        - {account_code: "2100", amount_usd_minor: -10700}
+
+  - name: negative_balance_is_reserved_after_threshold_and_released_on_recovery
+    description: >
+      Seller paid out, then a $30 dispute lands on Jan 20 (balance -$30).
+      Jan 31: 11 days negative, under the 30-day threshold, no reserve.
+      Feb 28: 39 days, fully reserved. Mar 15: a sale brings the balance back
+      to zero, so the reserve is released.
+    model: fct_seller_balance_aging
+    overrides:
+      vars:
+        bad_debt_aging_days: 30
+    given:
+      - input: ref('fct_ledger_entries')
+        rows:
+          - {seller_id: 7, account_code: "2000", posting_date: "2025-01-05", amount_usd_minor: -5000}
+          - {seller_id: 7, account_code: "2000", posting_date: "2025-01-10", amount_usd_minor: 5000}
+          - {seller_id: 7, account_code: "2000", posting_date: "2025-01-20", amount_usd_minor: 3000}
+          - {seller_id: 7, account_code: "4000", posting_date: "2025-01-20", amount_usd_minor: -999}
+          - {seller_id: 7, account_code: "2000", posting_date: "2025-03-15", amount_usd_minor: -3000}
+      - input: ref('int_month_ends')
+        rows:
+          - {month_end: "2025-01-31"}
+          - {month_end: "2025-02-28"}
+          - {month_end: "2025-03-31"}
+    expect:
+      rows:
+        - {month_end: "2025-01-31", seller_id: 7, payable_balance_usd_minor: -3000,
+           days_negative: 11, is_reserved: false, allowance_usd_minor: 0}
+        - {month_end: "2025-02-28", seller_id: 7, payable_balance_usd_minor: -3000,
+           days_negative: 39, is_reserved: true, allowance_usd_minor: 3000}
+        - {month_end: "2025-03-31", seller_id: 7, payable_balance_usd_minor: 0,
+           days_negative: null, is_reserved: false, allowance_usd_minor: 0}

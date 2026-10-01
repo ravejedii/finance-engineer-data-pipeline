@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: fct_orders
+    description: >
+      One row per Kiln order with its economics in USD. GMV is the order value;
+      Kiln's revenue is only its platform fee (Kiln is an agent, not the principal).
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+      - name: gmv_usd_minor
+        description: Order value converted at Kiln's booking rate. Not revenue.
+        data_tests: [not_null]
+      - name: platform_fee_revenue_usd_minor
+        description: Kiln's revenue on the order, from the ledger.
+      - name: contribution_usd_minor
+        description: Platform fee revenue minus processing fees minus realized FX loss.
