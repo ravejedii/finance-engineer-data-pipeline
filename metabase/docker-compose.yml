@@ -1,0 +1,43 @@
+# Metabase OSS (free, self-hosted) for the Kiln dashboards. BigQuery stays the
+# warehouse; Postgres here only stores Metabase's own dashboards, questions,
+# users and settings, on a named volume so they survive restarts and upgrades.
+#
+#   cp metabase/.env.example metabase/.env      # then set a password in it
+#   docker compose -f metabase/docker-compose.yml --env-file metabase/.env up -d
+#   uv run python -m metabase.setup
+services:
+  metabase-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: metabase
+      POSTGRES_USER: metabase
+      POSTGRES_PASSWORD: ${MB_DB_PASS:?set MB_DB_PASS in metabase/.env}
+    volumes:
+      - kiln-metabase-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metabase -d metabase"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+    # No ports: only the metabase container can reach it.
+
+  metabase:
+    image: metabase/metabase:v0.63.19
+    depends_on:
+      metabase-db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:3000"  # localhost only: not reachable from your network
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: metabase-db
+      MB_DB_PORT: "5432"
+      MB_DB_DBNAME: metabase
+      MB_DB_USER: metabase
+      MB_DB_PASS: ${MB_DB_PASS:?set MB_DB_PASS in metabase/.env}
+      MB_ANON_TRACKING_ENABLED: "false"
+      MB_CHECK_FOR_UPDATES: "false"
+    restart: unless-stopped
+
+volumes:
+  kiln-metabase-db:
