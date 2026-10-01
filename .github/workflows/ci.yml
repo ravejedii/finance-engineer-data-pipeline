@@ -34,6 +34,8 @@ jobs:
       - run: uv sync --locked
       - name: pre-commit (includes sqlfluff)
         run: uv run pre-commit run --all-files --show-diff-on-failure
+      - name: Generator tests
+        run: uv run pytest -q
       - name: dbt parse (no warehouse connection)
         working-directory: transform
         run: uv run dbt parse
