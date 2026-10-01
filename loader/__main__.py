@@ -42,6 +42,7 @@ def main() -> None:
     sub.add_parser("verify", help="check warehouse row counts against the manifest")
     args = parser.parse_args()
 
+    print("connecting to BigQuery...", flush=True)
     warehouse = _warehouse()
     if args.command == "load":
         results = load(args.raw, warehouse, args.start, args.end, workers=8)
