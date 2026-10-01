@@ -1,4 +1,4 @@
-"""The two Kiln dashboards, as data: each card is a native BigQuery SQL question.
+"""The Kiln dashboards, as data: each card is a native BigQuery SQL question.
 
 `{m}` is replaced with the fully qualified marts dataset, e.g.
 `finance-engineer-data-pipeline`.kiln_marts. Money is stored as integer USD
@@ -134,7 +134,7 @@ UNIT_ECONOMICS = {
     "name": "Kiln: Unit economics",
     "description": (
         "GMV, take rate and contribution margin by month, region, processor, "
-        "plan and seller cohort. Definitions in METRICS.md. Synthetic data."
+        "and plan. Definitions in METRICS.md. Synthetic data."
     ),
     "cards": [
         {
@@ -230,6 +230,130 @@ group by plan_name
 order by gmv_usd desc
 """,
         },
+    ],
+}
+
+CHURN_AND_RETENTION = {
+    "name": "Kiln: Churn and retention",
+    "description": (
+        "Seller churn (three full months with no orders), account closures, "
+        "cohort retention, net revenue retention and LTV to date. Definitions "
+        "in METRICS.md. Synthetic data."
+    ),
+    "cards": [
+        {
+            "name": "Monthly seller churn rate and revenue churn rate",
+            "display": "line",
+            "size": (12, 6),
+            "settings": {
+                "graph.dimensions": ["activity_month"],
+                "graph.metrics": ["seller_churn_rate", "revenue_churn_rate"],
+            },
+            "sql": """
+select activity_month, seller_churn_rate, revenue_churn_rate
+from {m}.mrt_seller_churn_monthly
+where seller_churn_rate is not null
+order by activity_month
+""",
+        },
+        {
+            "name": "Seller flows: new, returning and churned",
+            "display": "bar",
+            "size": (12, 6),
+            "settings": {
+                "graph.dimensions": ["activity_month"],
+                "graph.metrics": ["new_sellers", "returning_sellers", "churned_sellers"],
+                "stackable.stack_type": "stacked",
+            },
+            "sql": """
+-- Returning = reactivated, plus sellers who joined before the data starts.
+-- Churned is negative so it reads as an outflow.
+select
+    activity_month,
+    new_sellers,
+    reactivated_sellers + first_seen_sellers as returning_sellers,
+    -churned_sellers as churned_sellers
+from {m}.mrt_seller_churn_monthly
+where seller_churn_rate is not null
+order by activity_month
+""",
+        },
+        {
+            "name": "Stopped selling vs closed account, sellers per month",
+            "display": "line",
+            "size": (12, 6),
+            "settings": {
+                "graph.dimensions": ["activity_month"],
+                "graph.metrics": ["churned_sellers", "account_closures", "active_sellers"],
+            },
+            "sql": """
+select activity_month, churned_sellers, account_closures, active_sellers
+from {m}.mrt_seller_churn_monthly
+where seller_churn_rate is not null
+order by activity_month
+""",
+        },
+        {
+            "name": "Seller churn rate by plan",
+            "display": "line",
+            "size": (12, 6),
+            "settings": {
+                "graph.dimensions": ["churn_month", "plan_name"],
+                "graph.metrics": ["seller_churn_rate"],
+            },
+            "sql": """
+-- Plan = the seller's plan in the month before the churn month.
+select
+    departure_month as churn_month,
+    plan_name,
+    safe_divide(countif(departure = 'churned'), count(*)) as seller_churn_rate
+from {m}.mrt_seller_months
+group by churn_month, plan_name
+having countif(departure = 'undetermined') = 0
+order by churn_month
+""",
+        },
+        {
+            "name": "LTV to date per joined seller, by months since joining (USD)",
+            "display": "line",
+            "size": (24, 6),
+            "settings": {
+                "graph.dimensions": ["months_since_join"],
+                "graph.metrics": ["ltv_contribution_usd", "ltv_net_revenue_usd"],
+            },
+            "sql": """
+-- Pooled over the cohorts that have reached each month: sum of cumulative
+-- value / sum of cohort sizes, never an average of cohort averages. Months
+-- reached by fewer than three cohorts are left out as too thin to read.
+select
+    months_since_join,
+    sum(cumulative_contribution_usd_minor) / sum(cohort_size) / 100 as ltv_contribution_usd,
+    sum(cumulative_net_revenue_usd_minor) / sum(cohort_size) / 100 as ltv_net_revenue_usd,
+    count(*) as cohorts
+from {m}.mrt_seller_ltv_cohorts
+group by months_since_join
+having count(*) >= 3
+order by months_since_join
+""",
+        },
+        {
+            "name": "LTV to date per joined seller by cohort (contribution, USD)",
+            "display": "table",
+            "size": (24, 8),
+            "sql": """
+select
+    cohort_month,
+    any_value(cohort_size) as cohort_size,
+    max(if(months_since_join = 1, ltv_per_seller_usd_minor, null)) / 100 as m1,
+    max(if(months_since_join = 3, ltv_per_seller_usd_minor, null)) / 100 as m3,
+    max(if(months_since_join = 6, ltv_per_seller_usd_minor, null)) / 100 as m6,
+    max(if(months_since_join = 12, ltv_per_seller_usd_minor, null)) / 100 as m12,
+    max_by(ltv_per_seller_usd_minor, months_since_join) / 100 as to_date
+from {m}.mrt_seller_ltv_cohorts
+group by cohort_month
+order by cohort_month
+""",
+        },
         {
             "name": "Seller retention by join cohort",
             "display": "table",
@@ -249,18 +373,18 @@ order by cohort_month
 """,
         },
         {
-            "name": "Net revenue retention by join cohort",
+            "name": "Net revenue retention by join cohort (vs month 1)",
             "display": "table",
             "size": (24, 8),
             "sql": """
 select
     cohort_month,
-    max(if(months_since_join = 1, revenue_retention, null)) as m1,
+    max(if(months_since_join = 2, revenue_retention, null)) as m2,
     max(if(months_since_join = 3, revenue_retention, null)) as m3,
     max(if(months_since_join = 6, revenue_retention, null)) as m6,
     max(if(months_since_join = 12, revenue_retention, null)) as m12
 from {m}.mrt_seller_cohorts
-where month_zero_revenue_usd_minor is not null
+where month_one_revenue_usd_minor is not null
 group by cohort_month
 order by cohort_month
 """,
@@ -268,4 +392,4 @@ order by cohort_month
     ],
 }
 
-DASHBOARDS = [FINANCE_CLOSE, UNIT_ECONOMICS]
+DASHBOARDS = [FINANCE_CLOSE, UNIT_ECONOMICS, CHURN_AND_RETENTION]

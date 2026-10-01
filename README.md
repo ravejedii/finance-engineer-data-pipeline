@@ -128,7 +128,10 @@ and run on free, self-hosted Metabase OSS:
 - **Finance close:** trial balance check, income statement, three-way recon
   status, payout recon, unmatched orders, missing batches, FX, bad debt.
 - **Unit economics:** GMV, take rate, contribution margin by region, processor
-  and plan, refund and dispute rates, seller retention and NRR by cohort.
+  and plan, refund and dispute rates.
+- **Churn and retention:** monthly seller and revenue churn, seller flows,
+  churn vs account closures, churn by plan, LTV to date, seller retention and
+  NRR by cohort.
 
 ## Running it
 

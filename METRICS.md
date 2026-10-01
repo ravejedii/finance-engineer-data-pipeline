@@ -32,7 +32,12 @@ and denominators, never by averaging ratios.
 | Chargeback loss rate | Dispute loss / GMV | order | product | risk | |
 | Active sellers | Sellers with at least one order in the period | seller × period | product | strategic finance | |
 | Seller retention | Cohort sellers active in month *n* / cohort size | cohort × month | product | strategic finance | |
-| Net revenue retention | Cohort net revenue in month *n* / cohort net revenue in month 0 | cohort × month | product | strategic finance | |
+| Net revenue retention | Cohort net revenue in month *n* / cohort net revenue in month 1 (its first full month) | cohort × month | product | strategic finance | |
+| Seller churn rate | Sellers active last month with no orders this month or the next two / sellers active last month | month | product | strategic finance | |
+| Revenue churn rate | Last month's net revenue from the sellers who churned / last month's net revenue from all active sellers | month | product | strategic finance | |
+| Account closures | Sellers whose app account was closed (`churned_at`) in the month | month | product | strategic finance | |
+| LTV to date | Cumulative contribution of a joining cohort / cohort size, by months since joining | cohort × month | product | strategic finance | |
+| CAC | Not available: there is no acquisition or marketing spend source | | | | |
 
 ## Definitions that need a decision, and the one taken
 
@@ -48,19 +53,35 @@ and denominators, never by averaging ratios.
 - **Cohort = the month a seller joined** (`sellers.created_at`), not the month of
   their first order. Sellers who join and never sell count in the cohort size
   and drag down retention, which is the point: activation is part of retention.
+- **Churn is behavioral: three full months with no orders** (about 90 days).
+  A seller active in March with no orders in April, May or June churned in
+  April. Inactive for one or two months and back is *paused*, not churned; a
+  seller who returns after churning counts as *reactivated*. The app
+  database's `churned_at` is a different number, an account closure, and the
+  churn dashboard shows the two side by side: they are different events and
+  need not agree.
+- **The two most recent months have no churn rate.** Churn there needs months
+  that have not happened yet, so the rate is null rather than a low number.
+- **LTV is contribution to date, not a forecast.** Cumulative contribution
+  (revenue − processing − realized FX) per seller who joined, including those
+  who never sold. It is before bad debt, and covers only cohorts that joined
+  inside the order window. LTV:CAC needs a spend source this dataset does not
+  have; the metric is listed as unavailable rather than estimated.
 - **Buyer region** is derived from buyer country by the `buyer_region` macro:
   US and CA are North America; DE, FR, NL, ES and IT are EU; GB is UK; BR is
   LATAM; JP is APAC; anything else is Other.
 
 ## Known limitations
 
-- **Month 0 is a partial month.** A seller who joins on the 28th has three days
-  of month-0 revenue. Net revenue retention against month 0 therefore runs
-  high for months 1+. A production version would anchor on the first full
-  month, or on trailing-90-day revenue.
+- **Net revenue retention is measured against month 1, not month 0.** Month 0
+  is partial (a seller who joins on the 28th has three days of revenue), and
+  anchoring on it put NRR at 1.3–2.8 for months 1–3. Month 1 is the first full
+  month, so NRR is defined from month 2 on.
 - **Cohorts older than the data window have no baseline.** Their
-  `month_zero_revenue_usd_minor` is null, so their revenue retention is null
+  `month_one_revenue_usd_minor` is null, so their revenue retention is null
   rather than a misleading number.
+- **Churn by plan uses the plan in the month before churn**, the plan the
+  seller left from.
 - **A month with no cohort activity has no row.** Retention charts should treat a
   missing month as zero, not interpolate it.
 - **FX booking rate.** GMV uses the reference rate on the order date. The
