@@ -42,10 +42,20 @@ models:
   - name: realized_fx_loss_usd_minor
     description: Realized FX on the order's settlement events (account 5200). Positive = loss.
   - name: refunded_usd_minor
-    description: Refunds charged to the seller, USD cents.
+    description: Refunds charged to the seller, USD cents (positive).
   - name: dispute_loss_to_seller_usd_minor
     description: Disputes (net of reversals) plus dispute fees charged to the seller.
   - name: contribution_usd_minor
     description: Platform fee revenue minus processing fees minus realized FX loss.
   - name: is_settled
     description: True if a processor charge was posted for the order.
+  - name: is_refunded
+    description: True if the order had any refund.
+  - name: dispute_count
+    description: Disputes opened against the order.
+  - name: buyer_region
+    description: Buyer region (buyer_region macro).
+  - name: plan_name
+    description: Seller plan name at order time.
+  - name: seller_cohort_month
+    description: Month the seller joined Kiln.

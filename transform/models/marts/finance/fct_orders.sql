@@ -34,7 +34,9 @@ ledger as (
             account_code = '2000' and source_event_type = 'dispute_reversal',
             -amount_usd_minor, 0
         )) as dispute_loss_to_seller_usd_minor,
-        countif(source_event_type = 'charge') > 0 as is_settled
+        countif(source_event_type = 'charge') > 0 as is_settled,
+        countif(source_event_type = 'refund') > 0 as is_refunded,
+        count(distinct if(source_event_type = 'dispute', journal_entry_id, null)) as dispute_count
     from {{ ref('fct_ledger_entries') }}
     where kiln_order_id is not null
     group by kiln_order_id
@@ -62,7 +64,12 @@ select
     coalesce(ledger.platform_fee_revenue_usd_minor, 0)
     - coalesce(ledger.processing_fee_usd_minor, 0)
     - coalesce(ledger.realized_fx_loss_usd_minor, 0) as contribution_usd_minor,
-    coalesce(ledger.is_settled, false) as is_settled
+    coalesce(ledger.is_settled, false) as is_settled,
+    coalesce(ledger.is_refunded, false) as is_refunded,
+    coalesce(ledger.dispute_count, 0) as dispute_count,
+    {{ buyer_region('orders.buyer_country') }} as buyer_region,
+    plans.plan_name,
+    date_trunc(date(sellers.created_at), month) as seller_cohort_month
 from orders
 left join rates
     on
@@ -70,3 +77,9 @@ left join rates
         and date(orders.created_at) = rates.rate_date
 left join ledger
     on orders.order_id = ledger.kiln_order_id
+left join {{ ref('stg_app_db__sellers') }} as sellers
+    on orders.seller_id = sellers.seller_id
+left join {{ ref('stg_app_db__plans') }} as plans
+    on
+        orders.plan_id = plans.plan_id
+        and orders.currency = plans.currency
