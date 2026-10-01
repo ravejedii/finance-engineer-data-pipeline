@@ -4,6 +4,7 @@ Used by tests so the loader's logic is checked without credentials."""
 from __future__ import annotations
 
 import json
+import threading
 from collections import defaultdict
 
 from loader.sources import Source
@@ -16,19 +17,27 @@ class MemoryWarehouse:
         self.tables: dict[str, list[dict]] = defaultdict(list)
         self.exceptions: list[dict] = []
         self.manifest: list[dict] = []
+        self._lock = threading.Lock()
 
     def manifest_checksums(self) -> dict[str, str]:
         return {m["file_name"]: m["checksum_sha256"] for m in self.manifest}
 
     def write_batch(self, source: Source, file_names: list[str], rows: list[dict],
                     exceptions: list[dict], manifest_rows: list[dict]) -> None:
-        files = set(file_names)
+        with self._lock:
+            self._write(source, set(file_names), rows, exceptions, manifest_rows)
+
+    def _write(self, source: Source, files: set[str], rows: list[dict],
+               exceptions: list[dict], manifest_rows: list[dict]) -> None:
         table = self.tables[source.table]
         table[:] = [r for r in table if r["_source_file"] not in files]
         table.extend(rows)
         self.exceptions[:] = [e for e in self.exceptions if e["_source_file"] not in files]
         self.exceptions.extend(exceptions)
         self.manifest.extend(manifest_rows)
+
+    def finish(self) -> None:
+        """Nothing is deferred in memory."""
 
     def latest_manifest(self) -> dict[str, dict]:
         return {m["file_name"]: m for m in self.manifest}
