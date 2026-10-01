@@ -427,3 +427,14 @@ alternatives considered, why, date.
   keeps a crashed run safe: its rows have no manifest entry, so the next run
   sees the files as present and replaces them atomically.
 - **Date:** 2026-10-01
+
+## 032. Shared loader tables are written once per run
+
+- **Decision:** Parallel source threads append only to each source's own
+  raw table. Manifest and exception rows are collected and written by
+  `finish()` in two appends at the end: exceptions first, manifest last.
+- **Why:** BigQuery rate-limits update operations on a single table. 14
+  sources appending to `load_manifest` at the same moment failed with 429
+  "too many table update operations for this table". Writing the manifest
+  last preserves the crash-safety rule from 031.
+- **Date:** 2026-10-01

@@ -36,6 +36,9 @@ class Warehouse(Protocol):
 
     def exception_counts(self) -> dict[str, int]: ...
 
+    def finish(self) -> None:
+        """Flush anything write_batch deferred. Called once, after every source."""
+
 
 @dataclass(frozen=True)
 class FileResult:
@@ -111,6 +114,7 @@ def load(raw_dir: Path, warehouse: Warehouse, start: date | None = None,
     else:
         for w in writes:
             warehouse.write_batch(*w)
+    warehouse.finish()
     return results
 
 

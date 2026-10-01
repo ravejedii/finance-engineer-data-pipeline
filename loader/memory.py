@@ -36,6 +36,9 @@ class MemoryWarehouse:
         self.exceptions.extend(exceptions)
         self.manifest.extend(manifest_rows)
 
+    def finish(self) -> None:
+        """Nothing is deferred in memory."""
+
     def latest_manifest(self) -> dict[str, dict]:
         return {m["file_name"]: m for m in self.manifest}
 
