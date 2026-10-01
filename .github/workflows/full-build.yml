@@ -53,6 +53,18 @@ jobs:
         run: uv run python -m loader verify
       - name: dbt build
         run: uv run python -m scripts.run_dbt_ci
+      - name: On failure, print orders with negative refund or dispute loss
+        if: failure()
+        working-directory: transform
+        run: |
+          uv run dbt show --limit 50 --inline "
+            select l.kiln_order_id, l.posting_date, l.source_system, l.source_event_type,
+                   l.account_code, l.amount_usd_minor, l.original_currency, l.original_amount_minor
+            from {{ ref('fct_ledger_entries') }} as l
+            where l.kiln_order_id in (
+              select order_id from {{ ref('fct_orders') }}
+              where refunded_usd_minor < 0 or dispute_loss_to_seller_usd_minor < 0)
+            order by l.kiln_order_id, l.occurred_at, l.account_code" || true
       - name: Every planted data issue is caught (answer key vs warehouse)
         run: uv run python scripts/check_issue_coverage.py
       - name: Preserve dbt results
