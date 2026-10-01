@@ -83,7 +83,7 @@ The generator records every problem it plants, row by row, in
 `data/truth/expected_issues.json`. CI builds the whole pipeline in a
 throwaway BigQuery dataset on every PR. Then `scripts/check_issue_coverage.py`
 checks the warehouse against the answer key, issue by issue and by row ID.
-Nothing may disappear silently: **16 of 16 checks pass**. The planted problems
+Nothing may disappear silently: **17 of 17 checks pass**. The planted problems
 are listed in [DATA_ISSUES.md](DATA_ISSUES.md).
 
 | | Small (CI, every PR) | Full |

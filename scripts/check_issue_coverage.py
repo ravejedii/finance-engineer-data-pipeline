@@ -130,6 +130,13 @@ def main() -> None:
             gaps == [missing["batch_number"]] and status == "bank_receipt_without_report",
             f"gaps={gaps}, {ref} recon_status={status}")
 
+    # A won chargeback whose chargeback sat in the missing file shows up as a
+    # reversal with no dispute; exactly those orders, no more, no fewer.
+    expected = set(missing["orphaned_reversal_order_ids"])
+    got = {r[0] for r in c.q(f"select kiln_order_id from `{marts}.fct_orphan_dispute_reversals`")}
+    c.check("processor_b_orphaned_dispute_reversals", got == expected,
+            f"expected {sorted(expected)}, warehouse has {sorted(got)}")
+
     # ---- System mismatches -----------------------------------------------------
     # Every unsettled order must be explained: planted, or its charge sat in the
     # missing file or in a row that went to exceptions.
