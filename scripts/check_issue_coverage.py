@@ -107,11 +107,17 @@ def main() -> None:
     c.check("processor_b_duplicate_rows", stg_n == len(keys),
             f"{len(keys)} duplicated lines -> {stg_n} staging rows")
 
-    keys = [b_key(k) for k in issues["processor_b_late_rows"]["keys"]]
+    # A line can be both late and malformed (the generator picks them
+    # independently). Malformed wins: that line belongs in exceptions.
+    malformed = set(issues["processor_b_malformed_rows"]["keys"])
+    late = issues["processor_b_late_rows"]["keys"]
+    keys = [b_key(k) for k in late if k not in malformed]
     stg_n = c.scalar(f"select count(*) from `{stg}.stg_processor_b__settlement_details` "
                      "where settlement_line_id in unnest(@keys)", keys=keys)
+    also_bad = len(late) - len(keys)
     c.check("processor_b_late_rows", stg_n == len(keys),
-            f"{stg_n}/{len(keys)} late lines present in staging")
+            f"{stg_n}/{len(keys)} late lines present in staging"
+            + (f" (+{also_bad} also malformed, checked as exceptions)" if also_bad else ""))
 
     keys = [b_key(k) for k in issues["processor_b_malformed_rows"]["keys"]]
     got_n = c.scalar(f"select count(*) from `{stg}.stg_exceptions` "

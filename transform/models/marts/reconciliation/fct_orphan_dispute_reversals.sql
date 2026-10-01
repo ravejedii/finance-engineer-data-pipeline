@@ -9,8 +9,12 @@
 select
     kiln_order_id,
     source_system as processor,
-    countif(source_event_type = 'dispute') as disputes_reported,
-    countif(source_event_type = 'dispute_reversal') as reversals_reported,
+    -- Count events (journal entries), not lines: zero-amount lines are dropped,
+    -- so a dispute and its reversal can have different line counts.
+    count(distinct if(source_event_type = 'dispute', journal_entry_id, null))
+        as disputes_reported,
+    count(distinct if(source_event_type = 'dispute_reversal', journal_entry_id, null))
+        as reversals_reported,
     min(if(source_event_type = 'dispute_reversal', posting_date, null)) as first_reversal_date,
     sum(if(
         account_code = '2000' and source_event_type = 'dispute_reversal', -amount_usd_minor, 0
@@ -20,6 +24,4 @@ where
     kiln_order_id is not null
     and source_event_type in ('dispute', 'dispute_reversal')
 group by kiln_order_id, source_system
-having
-    countif(source_event_type = 'dispute_reversal')
-    > countif(source_event_type = 'dispute')
+having reversals_reported > disputes_reported

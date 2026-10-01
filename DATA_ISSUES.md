@@ -62,6 +62,10 @@ These come from how the business works; none of them is injected damage.
   so those orders show a negative dispute loss. `fct_orphan_dispute_reversals`
   lists them (warn), and the coverage check asserts exactly these orders.
   This was found by the full-scale build, not designed in up front.
+- **Issues can overlap.** The generator picks each issue independently, so at
+  full scale one processor B line is both late and malformed. Malformed wins:
+  it goes to exceptions, and the coverage check expects it there, not in
+  staging.
 - **Small scale runs short** (four months), so no seller in it is negative
   for 90+ days (2 sellers are negative for 30+). CI exercises bad-debt
   recognition by setting the aging-threshold var to 30. Phase 4 unit tests
