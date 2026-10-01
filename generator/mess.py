@@ -140,6 +140,10 @@ def apply_file_mess(rendered: Rendered, truth: Truth, seed: int) -> dict:
     dropped = [r for r in rendered.b_rows if r["_file_batch"] == missing_batch]
     rendered.b_rows = [r for r in rendered.b_rows if r["_file_batch"] != missing_batch]
     dropped_payout = sum(r.get("_amount", 0) for r in dropped)
+    dropped_charge_orders = sorted(
+        int(r["Merchant Reference"].removeprefix("KILN-")) for r in dropped
+        if r["Type"] == "Settled" and r["Merchant Reference"]
+    )
     issues["processor_b_missing_batch_file"] = {
         "description": "One batch file never arrived. Its payout still reached the EUR bank "
                        "account, so bank receipts exceed reported settlements for that day.",
@@ -148,6 +152,7 @@ def apply_file_mess(rendered: Rendered, truth: Truth, seed: int) -> dict:
         "batch_date_cet": batch_day[missing_batch].isoformat(),
         "rows_in_missing_file": len(dropped),
         "payout_eur_minor": dropped_payout,
+        "charge_order_ids": dropped_charge_orders,
     }
 
     exclude = {id(r) for r in dups} | {id(r) for r in dup_rows}
@@ -162,6 +167,8 @@ def apply_file_mess(rendered: Rendered, truth: Truth, seed: int) -> dict:
                        "They belong in the loader's exceptions table, not the floor.",
         "count": len(bad_b),
         "keys": sorted(_b_key(r) for r in bad_b),
+        "charge_order_ids": sorted(int(r["Merchant Reference"].removeprefix("KILN-"))
+                                   for r in bad_b if r["Merchant Reference"]),
     }
 
     # ---------------- Processor A ----------------
@@ -231,6 +238,7 @@ def apply_file_mess(rendered: Rendered, truth: Truth, seed: int) -> dict:
                        "balance_transaction_id. They belong in the loader's exceptions table.",
         "count": len(a_bad),
         "original_balance_transaction_ids": sorted(bad_ids),
+        "charge_order_ids": _charge_orders(a_bad),
     }
 
     for row in a_trunc:
@@ -240,12 +248,19 @@ def apply_file_mess(rendered: Rendered, truth: Truth, seed: int) -> dict:
                        "split into columns, so the loader sends them to its exceptions table.",
         "count": len(a_trunc),
         "balance_transaction_ids": sorted(r["balance_transaction_id"] for r in a_trunc),
+        "charge_order_ids": _charge_orders(a_trunc),
     }
     rows.extend(extra)
 
     # ---------------- Bank and period cutoff ----------------
     rendered.bank_rows = [r for r in rendered.bank_rows if r["_file_day"] <= end]
     return issues
+
+
+def _charge_orders(rows: list[dict]) -> list[int]:
+    """Kiln orders whose processor A charge row is among these rows."""
+    return sorted(int(r["payment_metadata[kiln_order_id]"]) for r in rows
+                  if r["reporting_category"] == "charge" and r["payment_metadata[kiln_order_id]"])
 
 
 def _b_key(row: dict) -> str:
@@ -304,10 +319,14 @@ def truth_facts(truth: Truth, rendered: Rendered) -> dict:
             "count": len(disputes_after)},
         "seller_payouts_failed": {
             "description": "Seller payouts rejected by the receiving bank and returned.",
-            "count": sum(p.status == "failed" for p in truth.seller_payouts)},
+            "count": sum(p.status == "failed" for p in truth.seller_payouts),
+            "returned_in_period": sum(p.status == "failed" and p.returned_at is not None
+                                      for p in truth.seller_payouts)},
         "seller_payouts_reversed": {
             "description": "Seller payouts that settled and were later recalled.",
-            "count": sum(p.status == "reversed" for p in truth.seller_payouts)},
+            "count": sum(p.status == "reversed" for p in truth.seller_payouts),
+            "returned_in_period": sum(p.status == "reversed" and p.returned_at is not None
+                                      for p in truth.seller_payouts)},
         "processor_a_payouts_failed": {
             "description": "Processor A payouts to Kiln that failed; funds returned to the "
                            "processor balance and never reached the bank.",

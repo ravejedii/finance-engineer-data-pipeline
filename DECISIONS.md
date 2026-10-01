@@ -438,3 +438,76 @@ alternatives considered, why, date.
   "too many table update operations for this table". Writing the manifest
   last preserves the crash-safety rule from 031.
 - **Date:** 2026-10-01
+
+## 033. Reconciliation is three separate questions, each with its own table
+
+- **Decision:**
+  - `fct_order_settlement_matches`: did every Kiln order settle, and is
+    every settlement a Kiln order?
+  - `fct_payout_reconciliation`: did every processor payout reach the bank,
+    and is every bank receipt explained? Matched by reference, not by date.
+  - `fct_daily_reconciliation`: did the ledger book exactly what each
+    processor reported each day, in the original currency? Plus a daily
+    summary of payout breaks.
+- **Why:** Each question breaks for different reasons and goes to a
+  different owner (app engineering, treasury, the data team). Matching
+  payouts by reference avoids false breaks from weekends and bank holidays,
+  which matching by date would create. `break_status` and the tolerance var
+  turn the tables into a work queue.
+- **Date:** 2026-10-01
+
+## 034. "Nothing disappears silently" is tested at three levels
+
+- **Decision:**
+  1. The loader's `verify` checks that warehouse rows match the manifest.
+  2. dbt tests check that every distinct raw record lands exactly once,
+     in staging or `stg_exceptions`, and that every settlement event is
+     posted as exactly one journal entry.
+  3. `scripts/check_issue_coverage.py` reads the generator's answer key and
+     checks each planted issue against the warehouse, by row ID.
+- **Why:** Each level catches a different failure: a dropped file, a dropped
+  row, or a dropped event. The answer-key check is the only one that can say
+  "these are the 3 duplicates we planted, and these are the 3 staging
+  removed".
+- **Date:** 2026-10-01
+
+## 035. A missing file is detected, not failed on
+
+- **Decision:** `fct_processor_b_batch_gaps` has an `is_empty` test at warn
+  severity. The coverage check asserts the exact missing batch number.
+- **Why:** A missing settlement file is an operational event to chase with
+  the processor, not a code defect, so it shouldn't block a build. A warning
+  plus the break in payout reconciliation is what an analyst would act on.
+- **Date:** 2026-10-01
+
+## 036. Documentation is enforced, not hoped for
+
+- **Decision:** CI runs `dbt docs generate`, then `scripts/check_docs_coverage.py`.
+  That script fails if any mart model, or any column the warehouse actually
+  has (from `catalog.json`), has no description.
+- **Why:** Comparing against the warehouse catalog catches new columns nobody
+  documented. Checking only the YAML would miss those.
+- **Date:** 2026-10-01
+
+## 037. CI runs one BigQuery build at a time
+
+- **Decision:** The build job joins a repository-wide concurrency group
+  (`bigquery-ci`, no cancelling), and the `ci` profile uses 4 dbt threads.
+- **Why:** When four PRs built at once (about 40 concurrent BigQuery jobs),
+  BigQuery queued jobs long enough to hit the 5-minute job timeout. A
+  109-row table that normally builds in 3 seconds timed out. Each run passed
+  when it ran alone. A waiting build costs no runner time.
+- **Date:** 2026-10-01
+
+## 038. Every CI run builds into a never-reused dataset name
+
+- **Decision:** `DBT_DATASET = ci_<run_id>_<attempt>`, replacing
+  `ci_pr_<n>`. Cleanup still drops everything with that prefix.
+- **Evidence:** A stalled `fct_ledger_entries` build started 0.6 s after
+  submission and then ran 198 s using only 11 slot-seconds. It was waiting,
+  not computing. The retry built it in 5 s. Every stall was a table write,
+  and each PR's first run (fresh names) passed; repeat runs reused names
+  dropped seconds earlier.
+- **Status:** This is a hypothesis. The job-timeline diagnostic stays in CI
+  to confirm or refute it.
+- **Date:** 2026-10-01
