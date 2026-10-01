@@ -17,6 +17,26 @@ flags:
 # Layering: staging (one model per source, clean only) -> intermediate
 # (business logic, not exposed) -> marts (facts and dimensions people query).
 # Custom schemas land as <target dataset>_<layer>, e.g. kiln_dev_staging.
+# Accounting policy lives here, not in SQL. Change a var, rebuild, and the
+# ledger restates under the new policy.
+vars:
+  # Days a seller balance must stay negative before it's reserved as bad debt.
+  bad_debt_aging_days: 90
+  # Which rate Kiln books foreign-currency amounts at. Only "reference"
+  # (latest published business-day rate on or before the event) is built.
+  fx_rate_source: reference
+  # A reconciliation difference at or below this many minor units is not a break.
+  recon_tolerance_minor: 100
+  # Incremental ledger rebuilds this many days back to absorb late and restated rows.
+  ledger_lookback_days: 10
+
+seeds:
+  kiln:
+    +schema: reference
+    chart_of_accounts:
+      +column_types:
+        account_code: string
+
 models:
   kiln:
     staging:

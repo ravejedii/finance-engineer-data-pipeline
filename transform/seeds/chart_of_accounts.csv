@@ -1,0 +1,15 @@
+account_code,account_name,account_type,normal_balance,description
+1000,cash_at_processor_a,asset,debit,Funds held by processor A (USD) before payout to Kiln's bank.
+1010,cash_at_processor_b,asset,debit,Funds held by processor B (EUR) before payout; carried in USD at booking rates.
+1050,cash_in_transit_usd,asset,debit,Processor A payouts sent but not yet on Kiln's USD bank statement.
+1060,cash_in_transit_eur,asset,debit,Processor B payouts sent but not yet on Kiln's EUR bank statement.
+1100,cash_in_bank_usd,asset,debit,Kiln USD operating account.
+1110,cash_in_bank_eur,asset,debit,Kiln EUR operating account; carried in USD at booking rates.
+1300,allowance_for_doubtful_accounts,contra_asset,credit,Reserve against seller balances Kiln does not expect to recover.
+2000,seller_payable,liability,credit,What Kiln owes sellers. A debit balance for one seller means that seller owes Kiln.
+2100,unmatched_settlements,liability,credit,Suspense for processor charges with no Kiln order. Cleared by investigation.
+4000,platform_fee_revenue,revenue,credit,Kiln's fee on each order: the plan percentage plus a fixed fee.
+5000,processing_fee_expense,expense,debit,Fees processors charge Kiln per transaction.
+5100,dispute_losses,expense,debit,Dispute amounts and fees Kiln bears itself (not passed to a seller).
+5200,fx_gain_loss,expense,debit,Difference between Kiln's booking rate and the rate the money actually moved at. Debit = loss.
+5300,bad_debt_expense,expense,debit,Seller balances written off or reserved as unrecoverable.

@@ -1,0 +1,59 @@
+version: 2
+
+models:
+  - name: stg_processor_a__balance_transactions
+    description: Processor A balance transactions, one row per transaction, latest restatement wins.
+    columns:
+      - name: balance_transaction_id
+        data_tests: [unique, not_null]
+      - name: created_at
+        data_tests: [not_null]
+      - name: net_minor
+        data_tests: [not_null]
+
+  - name: stg_processor_a__payouts
+    columns:
+      - name: payout_id
+        data_tests: [unique, not_null]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [in_transit, paid, failed]
+
+  - name: stg_processor_b__settlement_details
+    description: Processor B settlement lines, one row per line; UTC timestamps; duplicates removed.
+    columns:
+      - name: settlement_line_id
+        data_tests: [unique, not_null]
+      - name: created_at
+        data_tests: [not_null]
+
+  - name: stg_bank__statement_lines
+    columns:
+      - name: bank_transaction_id
+        data_tests: [unique, not_null]
+      - name: amount_minor
+        data_tests: [not_null]
+
+  - name: stg_fx__reference_rates
+    columns:
+      - name: units_per_usd
+        data_tests: [not_null]
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "concat(currency, '|', cast(rate_date as string))"
+
+  - name: stg_app_db__orders
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+
+  - name: stg_app_db__seller_payouts
+    columns:
+      - name: seller_payout_id
+        data_tests: [unique, not_null]
+
+  - name: stg_exceptions
+    description: Every raw row that will not reach the ledger, with the reason.
