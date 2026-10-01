@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: fct_ledger_entries
+    description: >
+      The general ledger. One row per journal line, in USD minor units, with the
+      original currency and amount kept alongside. Debits equal credits for every
+      journal entry and every month (tested).
+    columns:
+      - name: ledger_line_id
+        description: Stable hash of the journal entry and account.
+        data_tests: [unique, not_null]
+      - name: journal_entry_id
+        description: One source event. Its lines net to zero.
+        data_tests: [not_null]
+      - name: posting_date
+        description: UTC date the event affects the books.
+        data_tests: [not_null]
+      - name: account_code
+        description: Chart of accounts code (seed chart_of_accounts).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('chart_of_accounts')
+                field: account_code
+      - name: amount_usd_minor
+        description: Signed amount in USD cents. Positive = debit, negative = credit.
+        data_tests:
+          - sums_to_zero:
+              arguments:
+                group_by: journal_entry_id
+          - sums_to_zero:
+              name: ledger_balances_by_month
+              arguments:
+                group_by: date_trunc(posting_date, month)
+      - name: debit_usd_minor
+        description: Debit side, USD cents (0 for credit lines).
+      - name: credit_usd_minor
+        description: Credit side, USD cents (0 for debit lines).
+      - name: source_system
+        description: processor_a, processor_b, bank or app_db.
+      - name: source_event_type
+        description: The kind of source event (charge, refund, payout, seller_payout, ...).
+      - name: original_currency
+        description: Currency of the source amount before conversion to USD.
+      - name: original_amount_minor
+        description: The source amount in its own currency's minor units.
+
+  - name: dim_sellers
+    description: Sellers with plan history, type 2. One row per seller per plan period.
+    columns:
+      - name: seller_version_key
+        data_tests: [unique, not_null]
+      - name: valid_from
+        data_tests: [not_null]

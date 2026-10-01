@@ -12,13 +12,24 @@ bounds as (
     from published
 ),
 
+currencies as (
+    select distinct currency from published
+),
+
+days as (
+    select day as rate_date
+    from bounds
+    cross join
+        unnest(generate_date_array(date_sub(bounds.first_date, interval 7 day), bounds.last_date))
+            as day
+),
+
 spine as (
     select
         currencies.currency,
-        day as rate_date
-    from bounds
-    cross join unnest(generate_date_array(date_sub(bounds.first_date, interval 7 day), bounds.last_date)) as day
-    cross join (select distinct currency from published) as currencies
+        days.rate_date
+    from days
+    cross join currencies
 ),
 
 filled as (
@@ -32,8 +43,9 @@ filled as (
         ) as units_per_usd
     from spine
     left join published
-        on spine.currency = published.currency
-        and spine.rate_date = published.rate_date
+        on
+            spine.currency = published.currency
+            and spine.rate_date = published.rate_date
     window
         forward_fill as (
             partition by spine.currency order by spine.rate_date
@@ -56,8 +68,7 @@ union all
 
 select
     'USD' as currency,
-    day as rate_date,
+    rate_date,
     cast(1 as numeric) as units_per_usd,
     true as is_published
-from bounds
-cross join unnest(generate_date_array(date_sub(bounds.first_date, interval 7 day), bounds.last_date)) as day
+from days

@@ -279,3 +279,73 @@ alternatives considered, why, date.
   week can't silently reload today's app DB snapshot. A test proves a
   one-shot range load equals loading the same days one at a time.
 - **Date:** 2026-09-30
+
+## 020. Staging uses base models plus a single exceptions model
+
+- **Decision:** For each processor, `base_*` types every raw row and adds an
+  `invalid_reason`. `stg_*` keeps the valid rows and dedupes them.
+  `stg_exceptions` unions the invalid rows with the loader's
+  `load_exceptions`.
+- **Why:** A raw row now ends in exactly one of two places, the ledger path
+  or an exceptions table with a reason. Bad values return null through
+  `safe.` functions and an explicit format check (`to_minor_units`), never a
+  guessed number.
+- **Date:** 2026-10-01
+
+## 021. Processor B timestamps use the report's own CET/CEST column
+
+- **Decision:** UTC = local time minus the offset named in the `TimeZone`
+  column (+01:00 or +02:00), not "convert from Europe/Amsterdam".
+- **Why:** On the night clocks go back, 02:30 local happens twice. A zone
+  name can't tell those two moments apart; the column the processor sends
+  can.
+- **Date:** 2026-10-01
+
+## 022. One grain for both processors: a single money movement
+
+- **Decision:** `int_settlement_events` has one row per change to Kiln's
+  balance at a processor: charge, refund, dispute, dispute_fee,
+  dispute_reversal, payout, payout_reversal. Amounts are signed from Kiln's
+  side, and every row satisfies gross − fee = net.
+- **Alternatives:** One row per order, with charge, refund and dispute
+  amounts as columns.
+- **Why:** An order-level row can't hold a second partial refund or a
+  dispute that is won and then reversed, and it hides timing: a refund in
+  March against a February order belongs in March. The ledger posts one
+  journal entry per settlement event.
+- **Date:** 2026-10-01
+
+## 023. Ledger posting rules, with realized FX as the balancing line
+
+- **Decision:** Each settlement event becomes one balanced journal entry in
+  USD. Cash is booked at what the processor actually settled. Seller payable
+  and revenue are booked at Kiln's booking rate. The difference between the
+  two is posted to `fx_gain_loss`, which is realized FX by construction.
+  Dispute amounts and fees are charged to the seller. Charges with no Kiln
+  order go to `unmatched_settlements` (suspense), not to revenue.
+- **Why:** This makes the accounting policy explicit in one place, and the
+  `sums_to_zero` tests prove every entry and every month balances.
+- **Date:** 2026-10-01
+
+## 024. The incremental ledger replaces monthly partitions rather than merging lines
+
+- **Decision:** `fct_ledger_entries` uses `insert_overwrite` on monthly
+  `posting_date` partitions and is clustered by account. Each run recomputes
+  every month touched by the `ledger_lookback_days` window (default 10).
+- **Alternatives:** `merge` on `ledger_line_id`; a full refresh every run.
+- **Why:** A merge updates and inserts but never deletes, so a line that
+  disappears upstream (for example after a restatement) would stay in the
+  ledger forever. Replacing whole partitions can't keep stale lines. A full
+  refresh would be correct but rescans 18 months on every run.
+- **Cost of this choice:** A late row older than the lookback window is
+  missed until a full refresh. The lookback is a var, so it can be widened
+  for a backfill.
+- **Date:** 2026-10-01
+
+## 025. The seller dimension is built from plan history, not a dbt snapshot
+
+- **Decision:** `dim_sellers` is type 2, built from the app DB's
+  effective-dated `seller_plan_changes`.
+- **Why:** A snapshot only records changes it observes between runs. A
+  fresh warehouse, which is every CI run, would have no history at all.
+- **Date:** 2026-10-01
