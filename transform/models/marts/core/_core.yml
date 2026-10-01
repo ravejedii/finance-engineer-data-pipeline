@@ -1,56 +1,97 @@
 version: 2
-
 models:
-  - name: fct_ledger_entries
-    description: >
-      The general ledger. One row per journal line, in USD minor units, with the
-      original currency and amount kept alongside. Debits equal credits for every
-      journal entry and every month (tested).
-    columns:
-      - name: ledger_line_id
-        description: Stable hash of the journal entry and account.
-        data_tests: [unique, not_null]
-      - name: journal_entry_id
-        description: One source event. Its lines net to zero.
-        data_tests: [not_null]
-      - name: posting_date
-        description: UTC date the event affects the books.
-        data_tests: [not_null]
-      - name: account_code
-        description: Chart of accounts code (seed chart_of_accounts).
-        data_tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('chart_of_accounts')
-                field: account_code
-      - name: amount_usd_minor
-        description: Signed amount in USD cents. Positive = debit, negative = credit.
-        data_tests:
-          - sums_to_zero:
-              arguments:
-                group_by: journal_entry_id
-          - sums_to_zero:
-              name: ledger_balances_by_month
-              arguments:
-                group_by: date_trunc(posting_date, month)
-      - name: debit_usd_minor
-        description: Debit side, USD cents (0 for credit lines).
-      - name: credit_usd_minor
-        description: Credit side, USD cents (0 for debit lines).
-      - name: source_system
-        description: processor_a, processor_b, bank or app_db.
-      - name: source_event_type
-        description: The kind of source event (charge, refund, payout, seller_payout, ...).
-      - name: original_currency
-        description: Currency of the source amount before conversion to USD.
-      - name: original_amount_minor
-        description: The source amount in its own currency's minor units.
+- name: fct_ledger_entries
+  description: 'The general ledger. One row per journal line, in USD minor units, with the original currency
+    and amount kept alongside. Debits equal credits for every journal entry and every month (tested).
 
-  - name: dim_sellers
-    description: Sellers with plan history, type 2. One row per seller per plan period.
-    columns:
-      - name: seller_version_key
-        data_tests: [unique, not_null]
-      - name: valid_from
-        data_tests: [not_null]
+    '
+  columns:
+  - name: ledger_line_id
+    description: Stable hash of the journal entry and account.
+    data_tests:
+    - unique
+    - not_null
+  - name: journal_entry_id
+    description: One source event. Its lines net to zero.
+    data_tests:
+    - not_null
+  - name: posting_date
+    description: UTC date the event affects the books.
+    data_tests:
+    - not_null
+  - name: occurred_at
+    description: UTC timestamp of the source event.
+  - name: account_code
+    description: Chart of accounts code (seed chart_of_accounts).
+    data_tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: ref('chart_of_accounts')
+          field: account_code
+  - name: amount_usd_minor
+    description: Signed amount in USD cents. Positive = debit, negative = credit.
+    data_tests:
+    - sums_to_zero:
+        arguments:
+          group_by: journal_entry_id
+    - sums_to_zero:
+        name: ledger_balances_by_month
+        arguments:
+          group_by: date_trunc(posting_date, month)
+  - name: source_system
+    description: processor_a, processor_b, bank or app_db.
+  - name: source_event_type
+    description: The kind of source event (charge, refund, payout, seller_payout, ...).
+  - name: source_reference
+    description: ID of the source record (balance transaction, settlement line, bank line, seller payout,
+      or month-end date).
+  - name: processor_reference
+    description: Processor charge/payout reference, or SP-<id> for seller payouts. Joins the ledger to
+      bank lines.
+  - name: kiln_order_id
+    description: Kiln order the line relates to, when there is one.
+  - name: seller_id
+    description: Seller the line relates to (seller payable lines and seller payouts).
+  - name: original_currency
+    description: Currency of the source amount before conversion to USD.
+  - name: original_amount_minor
+    description: The source amount in its own currency's minor units.
+  - name: debit_usd_minor
+    description: Debit side, USD cents (0 for credit lines).
+  - name: credit_usd_minor
+    description: Credit side, USD cents (0 for debit lines).
+- name: dim_sellers
+  description: Sellers with plan history, type 2. One row per seller per plan period.
+  columns:
+  - name: seller_version_key
+    data_tests:
+    - unique
+    - not_null
+    description: Hash of seller_id and valid_from. One per seller plan period.
+  - name: seller_id
+    description: Kiln seller ID.
+  - name: seller_name
+    description: Seller display name (synthetic).
+  - name: seller_country
+    description: Seller's country.
+  - name: seller_status
+    description: active or churned (as of the extract).
+  - name: seller_created_at
+    description: When the seller joined (UTC).
+  - name: seller_churned_at
+    description: When the seller churned, if they did (UTC).
+  - name: plan_id
+    description: Plan in effect for this period.
+  - name: plan_name
+    description: starter, creator or pro.
+  - name: fee_bps
+    description: Plan percentage fee in basis points.
+  - name: valid_from
+    data_tests:
+    - not_null
+    description: Start of this plan period (UTC, inclusive).
+  - name: valid_to
+    description: End of this plan period (UTC, exclusive). Null for the current period.
+  - name: is_current
+    description: True for the seller's current plan period.

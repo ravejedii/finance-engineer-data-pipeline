@@ -1,17 +1,51 @@
 version: 2
-
 models:
-  - name: fct_orders
-    description: >
-      One row per Kiln order with its economics in USD. GMV is the order value;
-      Kiln's revenue is only its platform fee (Kiln is an agent, not the principal).
-    columns:
-      - name: order_id
-        data_tests: [unique, not_null]
-      - name: gmv_usd_minor
-        description: Order value converted at Kiln's booking rate. Not revenue.
-        data_tests: [not_null]
-      - name: platform_fee_revenue_usd_minor
-        description: Kiln's revenue on the order, from the ledger.
-      - name: contribution_usd_minor
-        description: Platform fee revenue minus processing fees minus realized FX loss.
+- name: fct_orders
+  description: 'One row per Kiln order with its economics in USD. GMV is the order value; Kiln''s revenue
+    is only its platform fee (Kiln is an agent, not the principal).
+
+    '
+  columns:
+  - name: order_id
+    data_tests:
+    - unique
+    - not_null
+    description: Kiln order ID.
+  - name: seller_id
+    description: Seller.
+  - name: product_id
+    description: Product sold.
+  - name: buyer_country
+    description: Buyer's country.
+  - name: processor
+    description: processor_a or processor_b.
+  - name: currency
+    description: Presentment currency the buyer paid in.
+  - name: order_type
+    description: one_time, subscription_initial or subscription_renewal.
+  - name: plan_id
+    description: Seller's plan at order time.
+  - name: created_at
+    description: Order timestamp (UTC).
+  - name: order_date
+    description: Order date (UTC).
+  - name: order_amount_minor
+    description: Order amount in presentment currency minor units.
+  - name: gmv_usd_minor
+    description: Order value converted at Kiln's booking rate. Not revenue.
+    data_tests:
+    - not_null
+  - name: platform_fee_revenue_usd_minor
+    description: Kiln's revenue on the order, from the ledger.
+  - name: processing_fee_usd_minor
+    description: Processor fees on the charge (account 5000).
+  - name: realized_fx_loss_usd_minor
+    description: Realized FX on the order's settlement events (account 5200). Positive = loss.
+  - name: refunded_usd_minor
+    description: Refunds charged to the seller, USD cents.
+  - name: dispute_loss_to_seller_usd_minor
+    description: Disputes (net of reversals) plus dispute fees charged to the seller.
+  - name: contribution_usd_minor
+    description: Platform fee revenue minus processing fees minus realized FX loss.
+  - name: is_settled
+    description: True if a processor charge was posted for the order.

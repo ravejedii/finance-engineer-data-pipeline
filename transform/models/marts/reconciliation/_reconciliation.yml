@@ -1,0 +1,122 @@
+version: 2
+
+models:
+  - name: fct_order_settlement_matches
+    description: >
+      Kiln app-DB orders matched to processor charges. One row per order, plus
+      one row per processor charge with no Kiln order.
+    columns:
+      - name: order_id
+        description: Kiln order ID, or the order reference the processor carried when Kiln has no such order.
+      - name: settlement_event_id
+        description: The matched processor charge (null when the processor never settled the order).
+      - name: processor
+        description: processor_a or processor_b.
+      - name: charge_reference
+        description: Processor charge reference (charge ID or PSP reference).
+      - name: order_currency
+        description: Presentment currency on Kiln's order.
+      - name: order_amount_minor
+        description: Order amount in Kiln's app DB, minor units of order_currency.
+      - name: settled_currency
+        description: Presentment currency the processor reported.
+      - name: settled_amount_minor
+        description: Presentment amount the processor reported, minor units.
+      - name: match_date
+        description: UTC date of the order, or of the charge when there is no order.
+      - name: match_status
+        description: matched, amount_mismatch, order_without_settlement or settlement_without_order.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [matched, amount_mismatch, order_without_settlement,
+                         settlement_without_order]
+
+  - name: fct_payout_reconciliation
+    description: >
+      Processor payouts to Kiln matched to Kiln's bank statements by reference.
+      One row per payout reference seen on either side.
+    columns:
+      - name: payout_reference
+        description: Processor payout ID (processor A) or PAYOUT-nnnn batch reference (processor B).
+        data_tests: [unique, not_null]
+      - name: processor
+        description: processor_a or processor_b.
+      - name: currency
+        description: Payout currency (USD for processor A, EUR for processor B).
+      - name: payout_date
+        description: UTC date the processor reported the payout.
+      - name: bank_booking_date
+        description: Date the money was booked on Kiln's bank statement.
+      - name: payout_amount_minor
+        description: Amount the processor reported paying out, minor units.
+      - name: bank_amount_minor
+        description: Amount received in Kiln's bank, minor units.
+      - name: difference_minor
+        description: bank_amount_minor - payout_amount_minor.
+      - name: recon_status
+        description: >
+          matched, amount_break, failed_and_returned, in_transit, or
+          bank_receipt_without_report (money with no processor report, e.g. a missing file).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [matched, amount_break, failed_and_returned, in_transit,
+                         bank_receipt_without_report]
+
+  - name: fct_daily_reconciliation
+    description: >
+      Daily three-way reconciliation by processor and settlement currency:
+      processor-reported net vs ledger cash postings, and processor payouts vs
+      bank receipts.
+    columns:
+      - name: recon_date
+        description: UTC date.
+      - name: processor
+        description: processor_a or processor_b.
+      - name: currency
+        description: Settlement currency.
+      - name: processor_net_minor
+        description: Net movement the processor reported for the day.
+      - name: ledger_cash_minor
+        description: Net booked to cash-at-processor in the ledger, original currency.
+      - name: ledger_vs_processor_minor
+        description: ledger_cash_minor - processor_net_minor. Must be within tolerance.
+        data_tests:
+          - within_tolerance:
+              arguments:
+                tolerance: "{{ var('recon_tolerance_minor') }}"
+      - name: payouts_reported_minor
+        description: Payouts the processor reported on this date.
+      - name: bank_received_minor
+        description: Bank receipts matched to those payouts (or unexplained receipts booked this date).
+      - name: payouts_matched
+        description: Count of payouts matched to the bank.
+      - name: payouts_in_transit
+        description: Count of payouts not yet on a bank statement.
+      - name: payouts_failed
+        description: Count of payouts the processor reported as failed.
+      - name: payout_breaks
+        description: Count of amount breaks and bank receipts with no processor report.
+      - name: break_status
+        description: ok or break.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [ok, break]
+
+  - name: fct_processor_b_batch_gaps
+    description: >
+      Missing processor B batch files, detected from gaps in the consecutive
+      batch numbering. A row here is a settlement file that never arrived.
+    columns:
+      - name: missing_batch_number
+        description: The batch number with no file.
+      - name: expected_payout_reference
+        description: The payout reference that batch would have carried; look for it in the bank.
+    data_tests:
+      # Detection, not a failure: this warns (and the issue-coverage check in CI
+      # asserts the exact missing batch) instead of failing the build.
+      - is_empty:
+          config:
+            severity: warn

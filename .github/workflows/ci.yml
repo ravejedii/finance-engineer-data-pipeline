@@ -86,6 +86,13 @@ jobs:
       - name: dbt build
         working-directory: transform
         run: uv run dbt build
+      - name: Every planted data issue is caught (answer key vs warehouse)
+        run: uv run python scripts/check_issue_coverage.py
+      - name: dbt docs generate
+        working-directory: transform
+        run: uv run dbt docs generate
+      - name: Every mart model and column is documented
+        run: uv run python scripts/check_docs_coverage.py
       - name: Drop this run's CI datasets
         # Only when auth succeeded: before that, nothing can have been created.
         if: always() && steps.auth.outcome == 'success'
