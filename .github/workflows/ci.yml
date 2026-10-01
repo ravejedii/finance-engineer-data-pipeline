@@ -2,6 +2,9 @@ name: ci
 
 on:
   pull_request:
+  # Also verify main itself after every merge, not just the PR branches.
+  push:
+    branches: [main]
   workflow_dispatch:
 
 # One run per PR at a time: a new push cancels the previous run, so two runs
