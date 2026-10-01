@@ -96,12 +96,17 @@ jobs:
         run: uv run dbt source freshness
       - name: dbt build
         working-directory: transform
-        # On failure: print each failed BigQuery job's timeline (queued vs.
-        # running), then retry only the failed and skipped nodes once.
+        # BigQuery occasionally accepts a table write and never finishes its
+        # output stage (DECISIONS 039). Each failure prints the job timeline,
+        # then dbt retry re-runs only the failed and skipped nodes (max 2).
         run: |
           uv run dbt build && exit 0
-          uv run python ../scripts/diagnose_bq_jobs.py
-          uv run dbt retry
+          for attempt in 1 2; do
+            uv run python ../scripts/diagnose_bq_jobs.py
+            echo "::warning::dbt retry attempt $attempt after a failed BigQuery job"
+            uv run dbt retry && exit 0
+          done
+          exit 1
       - name: Every planted data issue is caught (answer key vs warehouse)
         run: uv run python scripts/check_issue_coverage.py
       - name: dbt docs generate

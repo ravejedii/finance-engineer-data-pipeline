@@ -25,8 +25,9 @@ kiln:
       dataset: "{{ env_var('DBT_DATASET') }}"
       location: "{{ env_var('BQ_LOCATION', 'US') }}"
       threads: 4
-      # Short in CI: a stalled job fails fast and `dbt retry` resubmits it.
-      job_execution_timeout_seconds: 180
+      # Short in CI: healthy models take 3-8 s, so 90 s only catches stalled
+      # writes, which `dbt retry` then resubmits.
+      job_execution_timeout_seconds: 90
       job_retries: 1
       priority: interactive
       maximum_bytes_billed: 1000000000

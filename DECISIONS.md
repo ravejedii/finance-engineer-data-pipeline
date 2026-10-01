@@ -508,6 +508,26 @@ alternatives considered, why, date.
   not computing. The retry built it in 5 s. Every stall was a table write,
   and each PR's first run (fresh names) passed; repeat runs reused names
   dropped seconds earlier.
-- **Status:** This is a hypothesis. The job-timeline diagnostic stays in CI
-  to confirm or refute it.
+- **Status:** Refuted. The next run used fresh names and still stalled
+  (see 039). Kept anyway: fresh names cost nothing and avoid name-reuse
+  questions entirely.
+- **Date:** 2026-10-01
+
+## 039. Transient BigQuery write stalls are retried, and every stall is logged
+
+- **Evidence (from the job's full metadata and the project's job history):**
+  The stalled jobs started within 0.2 s and recorded no compute, and their
+  output (write) stage never completed before the timeout. The same
+  statement rebuilt in 3 s on retry. History also shows a `backendError`.
+  There were no `usageQuotaExceeded` errors, so the daily query cap is not
+  the cause. Stalls happened with and without concurrent CI runs, and with
+  fresh and reused dataset names.
+- **Decision:** CI jobs time out at 90 s (healthy models take 3–8 s). A
+  failed `dbt build` is followed by up to two `dbt retry` passes, each
+  preceded by `scripts/diagnose_bq_jobs.py`, which prints the failed job's
+  created/started/ended timeline and compute use. Each retry raises a CI
+  warning, so retried runs are visible, not silent.
+- **Why:** Google documents `backendError` as transient and to be retried.
+  The fault is outside this project's control, so the right handling is to
+  detect it quickly, retry, and keep the evidence.
 - **Date:** 2026-10-01
