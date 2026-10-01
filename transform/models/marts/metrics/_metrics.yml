@@ -1,0 +1,250 @@
+version: 2
+
+# The semantic layer: every metric defined once. Each metric's meta says what it
+# is (accounting number vs. product metric), its grain, and who owns it.
+# METRICS.md is the human-readable version of the same definitions.
+
+semantic_models:
+  - name: orders
+    description: Kiln orders with their USD economics (one row per order).
+    model: ref('fct_orders')
+    defaults:
+      agg_time_dimension: order_date
+    entities:
+      - name: order
+        type: primary
+        expr: order_id
+      - name: seller
+        type: foreign
+        expr: seller_id
+    dimensions:
+      - name: order_date
+        type: time
+        type_params:
+          time_granularity: day
+      - name: processor
+        type: categorical
+      - name: buyer_region
+        type: categorical
+      - name: plan_name
+        type: categorical
+      - name: seller_cohort_month
+        type: time
+        type_params:
+          time_granularity: month
+    measures:
+      - name: order_count
+        agg: count
+        expr: order_id
+      - name: refunded_order_count
+        agg: sum
+        expr: cast(is_refunded as int64)
+      - name: dispute_count
+        agg: sum
+      - name: gmv_usd_minor
+        agg: sum
+      - name: net_revenue_usd_minor
+        agg: sum
+        expr: platform_fee_revenue_usd_minor
+      - name: processing_cost_usd_minor
+        agg: sum
+        expr: processing_fee_usd_minor
+      - name: contribution_usd_minor
+        agg: sum
+      - name: dispute_loss_usd_minor
+        agg: sum
+        expr: dispute_loss_to_seller_usd_minor
+      - name: active_sellers
+        agg: count_distinct
+        expr: seller_id
+
+metrics:
+  - name: gmv
+    label: GMV
+    description: >
+      Gross merchandise value: the order amount at Kiln's booking rate, in USD
+      cents, before refunds. A volume metric. It is not revenue (Kiln is an agent).
+    type: simple
+    type_params:
+      measure: gmv_usd_minor
+    config:
+      meta: {kind: product, grain: order, owner: strategic-finance}
+
+  - name: net_revenue
+    label: Net revenue
+    description: Platform fee revenue (account 4000), USD cents. Kiln's only revenue.
+    type: simple
+    type_params:
+      measure: net_revenue_usd_minor
+    config:
+      meta: {kind: accounting, grain: order, owner: accounting}
+
+  - name: processing_cost
+    label: Processing cost
+    description: Processor fees on charges (account 5000), USD cents.
+    type: simple
+    type_params:
+      measure: processing_cost_usd_minor
+    config:
+      meta: {kind: accounting, grain: order, owner: accounting}
+
+  - name: contribution
+    label: Contribution
+    description: Net revenue - processing cost - realized FX loss, USD cents.
+    type: simple
+    type_params:
+      measure: contribution_usd_minor
+    config:
+      meta: {kind: product, grain: order, owner: strategic-finance}
+
+  - name: take_rate
+    label: Take rate
+    description: Net revenue / GMV.
+    type: ratio
+    type_params:
+      numerator: net_revenue
+      denominator: gmv
+    config:
+      meta: {kind: product, grain: order, owner: strategic-finance}
+
+  - name: contribution_margin
+    label: Contribution margin
+    description: Contribution / net revenue.
+    type: ratio
+    type_params:
+      numerator: contribution
+      denominator: net_revenue
+    config:
+      meta: {kind: product, grain: order, owner: strategic-finance}
+
+  - name: orders
+    label: Orders
+    description: Count of Kiln orders.
+    type: simple
+    type_params:
+      measure: order_count
+    config:
+      meta: {kind: product, grain: order, owner: strategic-finance}
+
+  - name: refunded_orders
+    label: Refunded orders
+    description: Orders with at least one refund.
+    type: simple
+    type_params:
+      measure: refunded_order_count
+    config:
+      meta: {kind: product, grain: order, owner: strategic-finance}
+
+  - name: refund_rate
+    label: Refund rate
+    description: Orders with any refund / orders.
+    type: ratio
+    type_params:
+      numerator: refunded_orders
+      denominator: orders
+    config:
+      meta: {kind: product, grain: order, owner: strategic-finance}
+
+  - name: disputes
+    label: Disputes
+    description: Disputes opened against orders.
+    type: simple
+    type_params:
+      measure: dispute_count
+    config:
+      meta: {kind: product, grain: order, owner: risk}
+
+  - name: dispute_rate_count
+    label: Dispute rate (count)
+    description: Disputes / orders.
+    type: ratio
+    type_params:
+      numerator: disputes
+      denominator: orders
+    config:
+      meta: {kind: product, grain: order, owner: risk}
+
+  - name: dispute_loss
+    label: Dispute loss
+    description: Disputed amounts net of won reversals, plus dispute fees, USD cents. Charged to the seller balance; hits Kiln only via bad debt.
+    type: simple
+    type_params:
+      measure: dispute_loss_usd_minor
+    config:
+      meta: {kind: accounting, grain: order, owner: risk}
+
+  - name: chargeback_loss_rate
+    label: Chargeback loss rate (dispute rate, $)
+    description: Dispute loss / GMV.
+    type: ratio
+    type_params:
+      numerator: dispute_loss
+      denominator: gmv
+    config:
+      meta: {kind: product, grain: order, owner: risk}
+
+  - name: active_sellers
+    label: Active sellers
+    description: Sellers with at least one order in the period.
+    type: simple
+    type_params:
+      measure: active_sellers
+    config:
+      meta: {kind: product, grain: seller-period, owner: strategic-finance}
+
+models:
+  - name: mrt_unit_economics_monthly
+    description: >
+      Additive unit economics by month, processor, buyer region, plan and seller
+      cohort. Sum any slice, then compute ratios from the sums.
+    columns:
+      - {name: order_month, description: First day of the order month.}
+      - {name: processor, description: processor_a or processor_b.}
+      - {name: buyer_region, description: "North America, EU, UK, LATAM, APAC or Other."}
+      - {name: plan_name, description: Seller plan at order time.}
+      - {name: seller_cohort_month, description: Month the seller joined Kiln.}
+      - {name: orders, description: Order count.}
+      - {name: refunded_orders, description: Orders with any refund.}
+      - {name: disputes, description: Disputes opened.}
+      - {name: gmv_usd_minor, description: GMV in USD cents (not revenue).}
+      - {name: net_revenue_usd_minor, description: Platform fee revenue in USD cents.}
+      - {name: processing_cost_usd_minor, description: Processor fees in USD cents.}
+      - {name: realized_fx_loss_usd_minor, description: Realized FX loss in USD cents (positive = loss).}
+      - {name: contribution_usd_minor, description: Revenue - processing cost - realized FX loss.}
+      - {name: refunded_usd_minor, description: "Refunds charged to sellers, USD cents (positive)."}
+      - {name: dispute_loss_usd_minor, description: Dispute amounts net of reversals plus fees.}
+
+  - name: mrt_metrics_monthly
+    description: Company-level metrics by month, one row per month, as defined in METRICS.md.
+    columns:
+      - name: order_month
+        description: First day of the month.
+        data_tests: [unique, not_null]
+      - {name: orders, description: Order count.}
+      - {name: refunded_orders, description: Orders with any refund.}
+      - {name: disputes, description: Disputes opened.}
+      - {name: gmv_usd_minor, description: GMV in USD cents.}
+      - {name: net_revenue_usd_minor, description: Net revenue in USD cents.}
+      - {name: processing_cost_usd_minor, description: Processing cost in USD cents.}
+      - {name: realized_fx_loss_usd_minor, description: Realized FX loss in USD cents.}
+      - {name: contribution_usd_minor, description: Contribution in USD cents.}
+      - {name: refunded_usd_minor, description: "Refunds charged to sellers, USD cents."}
+      - {name: dispute_loss_usd_minor, description: Dispute loss in USD cents.}
+      - {name: take_rate, description: Net revenue / GMV.}
+      - {name: contribution_margin, description: Contribution / net revenue.}
+      - {name: refund_rate, description: Refunded orders / orders.}
+      - {name: dispute_rate_count, description: Disputes / orders.}
+      - {name: chargeback_loss_rate, description: Dispute loss / GMV (the dollar dispute rate).}
+
+  - name: mrt_seller_cohorts
+    description: Seller retention and net revenue retention by joining cohort and months since joining.
+    columns:
+      - {name: cohort_month, description: Month the sellers joined Kiln.}
+      - {name: activity_month, description: Month being measured.}
+      - {name: months_since_join, description: activity_month - cohort_month in months.}
+      - {name: cohort_size, description: Sellers who joined in the cohort month.}
+      - {name: active_sellers, description: Cohort sellers with at least one order in activity_month.}
+      - {name: net_revenue_usd_minor, description: Cohort platform fee revenue in activity_month.}
+      - {name: month_zero_revenue_usd_minor, description: Cohort revenue in its first month; null if before the data window.}
+      - {name: seller_retention, description: active_sellers / cohort_size.}
+      - {name: revenue_retention, description: Net revenue / month-0 revenue (net revenue retention).}

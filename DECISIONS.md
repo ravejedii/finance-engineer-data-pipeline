@@ -562,3 +562,36 @@ alternatives considered, why, date.
 - **Scope:** This fixes CI's recovery policy. It does not establish or
   repair the underlying BigQuery stall cause. Spending caps are unchanged.
 - **Date:** 2026-10-01
+
+## 041. Metrics are defined in the dbt semantic layer and materialized as marts
+
+- **Problem:** Dashboards and ad hoc SQL each re-derive take rate, refund rate
+  and contribution, and the definitions drift.
+- **Decision:** Every metric is defined once in `_metrics.yml` (dbt
+  `semantic_models` and `metrics`, with kind, grain and owner in `meta`).
+  The same definitions are materialized as `mrt_unit_economics_monthly`
+  (additive, sliceable), `mrt_metrics_monthly` (company totals and ratios)
+  and `mrt_seller_cohorts`. METRICS.md is the readable version.
+- **Why both:** Metabase OSS cannot query the dbt semantic layer (that needs
+  dbt Cloud). The marts are what Metabase reads; the YAML is the contract and
+  is validated by `dbt parse`. Ratios are computed from sums, never by
+  averaging ratios, so any slice of the additive mart rolls up correctly.
+- **Date:** 2026-10-01
+
+## 042. A seller cohort is the month the seller joined
+
+- **Options:** Join month, or month of first order.
+- **Decision:** Join month (`sellers.created_at`). Sellers who never sell stay
+  in the denominator, so activation failure shows up as low retention instead
+  of disappearing.
+- **Known weakness:** Month 0 is partial, which inflates net revenue retention
+  for later months. Documented in METRICS.md rather than hidden.
+- **Date:** 2026-10-01
+
+## 043. Buyer region is a macro, not a seed
+
+- **Decision:** `buyer_region()` maps the eight buyer countries Kiln sees to
+  five regions plus Other. It is a macro because it is a pure function of one
+  column with no history or owner edits. If finance needs to remap
+  countries without a deploy, it becomes a seed.
+- **Date:** 2026-10-01
