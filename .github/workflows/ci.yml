@@ -1,0 +1,77 @@
+name: ci
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+# One run per PR at a time: a new push cancels the previous run, so two runs
+# never write to the same ci_pr_<n> datasets concurrently.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# None of these are secrets: CI authenticates keylessly through Workload
+# Identity Federation, and only workflows in this repository can use the
+# provider (see scripts/setup_gcp_wif.sh).
+env:
+  DBT_PROFILES_DIR: ${{ github.workspace }}/transform
+  GCP_PROJECT_ID: finance-engineer-data-pipeline
+  GCP_WIF_PROVIDER: projects/1077021128262/locations/global/workloadIdentityPools/github/providers/github-repo
+  GCP_SERVICE_ACCOUNT: kiln-ci@finance-engineer-data-pipeline.iam.gserviceaccount.com
+  BQ_LOCATION: US
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: pre-commit (includes sqlfluff)
+        run: uv run pre-commit run --all-files --show-diff-on-failure
+      - name: dbt parse (no warehouse connection)
+        working-directory: transform
+        run: uv run dbt parse
+
+  build:
+    needs: lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # lets the job request a GitHub OIDC token for GCP
+    env:
+      DBT_TARGET: ci
+      DBT_DATASET: ci_pr_${{ github.event.pull_request.number || github.run_id }}
+    steps:
+      - name: Require GCP identity config
+        run: |
+          if [[ "$GCP_WIF_PROVIDER" == *REPLACE_WITH* ]]; then
+            echo "::error::GCP Workload Identity isn't configured yet. Run scripts/setup_gcp_wif.sh (see README)."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+      - name: dbt debug
+        working-directory: transform
+        run: uv run dbt debug
+      - name: dbt build
+        working-directory: transform
+        run: uv run dbt build
+      - name: Drop this run's CI datasets
+        # Only when auth succeeded: before that, nothing can have been created.
+        if: always() && steps.auth.outcome == 'success'
+        working-directory: transform
+        run: uv run dbt run-operation drop_ci_datasets

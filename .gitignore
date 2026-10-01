@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# dbt
+transform/target/
+transform/dbt_packages/
+transform/logs/
+logs/
+.user.yml
+
+# Generated data: reproducible from the seeded generator, never committed
+data/
+
+# Credentials: never committed
+*keyfile*.json
+*service-account*.json
+.gcp/
+.env
