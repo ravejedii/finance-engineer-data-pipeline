@@ -11,6 +11,7 @@ Each source's new files are written in one step:
 from __future__ import annotations
 
 import re
+import threading
 import time
 import uuid
 from datetime import date
@@ -60,6 +61,15 @@ class BigQueryWarehouse:
     def __init__(self, project: str, dataset: str, location: str = "US") -> None:
         self.client = bigquery.Client(project=project, location=location)
         self.project, self.dataset, self.location = project, dataset, location
+        # Every source's transaction also writes load_manifest and load_exceptions.
+        # Concurrent transactions on one table abort each other, so scratch loads
+        # (the slow part) run in parallel and the short transactions run one at a time.
+        self._commit_lock = threading.Lock()
+        # Fast-path manifest and exception rows from every source, written in two
+        # appends by finish(). BigQuery rate-limits updates to a single table, so
+        # 14 parallel sources each appending to load_manifest get rejected (429).
+        self._pending_exceptions: list[dict] = []
+        self._pending_manifest: list[dict] = []
         self._ensure()
 
     def _ref(self, table: str) -> str:
@@ -152,12 +162,20 @@ class BigQueryWarehouse:
             # midway, the next run finds rows with no manifest entry, treats the
             # files as present, and replaces them through the transaction below.
             self._append(source.table, rows, source_schema(source))
-            self._append("load_exceptions", exceptions, EXCEPTION_FIELDS)
-            self._append("load_manifest", manifest_rows, MANIFEST_FIELDS)
+            with self._commit_lock:
+                self._pending_exceptions.extend(exceptions)
+                self._pending_manifest.extend(manifest_rows)
             self._log(source, file_names, rows, "append", started)
             return
         self._replace(source, files, rows, exceptions, manifest_rows)
         self._log(source, file_names, rows, "replace", started)
+
+    def finish(self) -> None:
+        """Write the deferred exceptions, then the manifest (last, so an interrupted
+        run leaves rows without a manifest entry and the next run replaces them)."""
+        self._append("load_exceptions", self._pending_exceptions, EXCEPTION_FIELDS)
+        self._append("load_manifest", self._pending_manifest, MANIFEST_FIELDS)
+        self._pending_exceptions, self._pending_manifest = [], []
 
     @staticmethod
     def _log(source: Source, file_names: list[str], rows: list[dict], mode: str,
@@ -189,7 +207,8 @@ class BigQueryWarehouse:
                     f"insert into `{self._ref(target)}` ({cols}) select {cols} from `{ref}`;"
                 )
             statements.append("commit transaction;")
-            self.client.query("\n".join(statements)).result(timeout=JOB_TIMEOUT_S)
+            with self._commit_lock:
+                self.client.query("\n".join(statements)).result(timeout=JOB_TIMEOUT_S)
         finally:
             for ref in scratch:
                 self.client.delete_table(ref, not_found_ok=True)

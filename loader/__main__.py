@@ -45,7 +45,7 @@ def main() -> None:
     print("connecting to BigQuery...", flush=True)
     warehouse = _warehouse()
     if args.command == "load":
-        results = load(args.raw, warehouse, args.start, args.end)
+        results = load(args.raw, warehouse, args.start, args.end, workers=8)
         statuses = Counter(r.status for r in results)
         rows = sum(r.row_count for r in results)
         exceptions = sum(r.exception_count for r in results)
