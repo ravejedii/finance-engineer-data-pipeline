@@ -21,12 +21,12 @@ kiln:
       type: bigquery
       method: oauth
       project: "{{ env_var('GCP_PROJECT_ID') }}"
-      # One dataset family per PR (ci_pr_<n>), dropped at the end of the run.
+      # One dataset family per CI run/attempt, dropped at the end of the run.
       dataset: "{{ env_var('DBT_DATASET') }}"
       location: "{{ env_var('BQ_LOCATION', 'US') }}"
       threads: 4
-      # Short in CI: healthy models take 3-8 s, so 90 s only catches stalled
-      # writes, which `dbt retry` then resubmits.
+      # Healthy small-scale models have taken 3-8 s. Bound slow jobs, then
+      # let the CI runner retry only confirmed transient failures.
       job_execution_timeout_seconds: 90
       job_retries: 1
       priority: interactive

@@ -38,7 +38,7 @@ jobs:
       - run: uv sync --locked
       - name: pre-commit (includes sqlfluff)
         run: uv run pre-commit run --all-files --show-diff-on-failure
-      - name: Generator tests
+      - name: Python tests (generator, loader, CI recovery)
         run: uv run pytest -q
       - name: dbt parse (no warehouse connection)
         working-directory: transform
@@ -49,9 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     # A hung BigQuery call would otherwise hold the runner for GitHub's 6-hour default.
     timeout-minutes: 15
-    # One BigQuery build at a time across the whole repo. Parallel runs from
-    # several PRs pushed BigQuery into queueing jobs past our 5-minute limit.
-    # A waiting build sits in GitHub's queue, not on a runner.
+    # One BigQuery build at a time across the whole repo limits competing work.
     concurrency:
       group: bigquery-ci
       cancel-in-progress: false
@@ -60,8 +58,7 @@ jobs:
       id-token: write  # lets the job request a GitHub OIDC token for GCP
     env:
       DBT_TARGET: ci
-      # A fresh dataset name every run. Reusing a name dropped seconds earlier
-      # correlated with table writes that started but sat idle until timeout.
+      # A fresh dataset family isolates each run and makes cleanup unambiguous.
       DBT_DATASET: ci_${{ github.run_id }}_${{ github.run_attempt }}
     steps:
       - name: Require GCP identity config
@@ -95,18 +92,9 @@ jobs:
         working-directory: transform
         run: uv run dbt source freshness
       - name: dbt build
-        working-directory: transform
-        # BigQuery occasionally accepts a table write and never finishes its
-        # output stage (DECISIONS 039). Each failure prints the job timeline,
-        # then dbt retry re-runs only the failed and skipped nodes (max 2).
-        run: |
-          uv run dbt build && exit 0
-          for attempt in 1 2; do
-            uv run python ../scripts/diagnose_bq_jobs.py
-            echo "::warning::dbt retry attempt $attempt after a failed BigQuery job"
-            uv run dbt retry && exit 0
-          done
-          exit 1
+        # Retry only completed transient jobs, at most twice per failed node.
+        # A later model gets its own budget; assertions and SQL errors fail CI.
+        run: uv run python -m scripts.run_dbt_ci
       - name: Every planted data issue is caught (answer key vs warehouse)
         run: uv run python scripts/check_issue_coverage.py
       - name: dbt docs generate
@@ -114,6 +102,16 @@ jobs:
         run: uv run dbt docs generate
       - name: Every mart model and column is documented
         run: uv run python scripts/check_docs_coverage.py
+      - name: Preserve dbt attempts and BigQuery diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            transform/target/ci_attempts/
+            transform/logs/dbt.log
       - name: Drop this run's CI datasets
         # Only when auth succeeded: before that, nothing can have been created.
         if: always() && steps.auth.outcome == 'success'

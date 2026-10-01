@@ -527,7 +527,8 @@ alternatives considered, why, date.
   internal wait reason. Earlier stalled jobs showed unfinished output
   stages, and the history includes one `backendError`. That suggests a
   write-path problem, but it remains a hypothesis.
-- **Decision:** CI jobs time out at 90 s (healthy models take 3–8 s). A
+- **Initial mitigation (retry policy superseded by 040):** CI jobs time out
+  at 90 s (healthy models have taken 3–8 s). A
   failed `dbt build` is followed by up to two `dbt retry` passes, each
   preceded by `scripts/diagnose_bq_jobs.py`, which prints the failed job's
   created/started/ended timeline and compute use. Each retry raises a CI
@@ -537,4 +538,27 @@ alternatives considered, why, date.
   still prints its job timeline and raises a warning. If stalls persist or
   a retry fails, the next step is a Google Cloud support case with these job
   IDs. This is a mitigation, not a root-cause fix.
+- **Date:** 2026-10-01
+
+## 040. CI recovery is bounded per node and requires a confirmed transient failure
+
+- **Problem:** Two retries shared by the entire build can be consumed by
+  different upstream tables. A later table then fails without getting its
+  own retry. The shell loop also retries SQL errors and failed assertions,
+  and overwrites the evidence from earlier attempts.
+- **Decision:** `scripts/run_dbt_ci.py` runs the full build, then uses
+  `dbt retry` for unsuccessful nodes. Each failed node gets at most two
+  retries, within a ten-minute total build budget and the existing
+  fifteen-minute workflow job limit. Only BigQuery jobs confirmed `DONE`
+  with a timeout, backend/internal error, or transient rate-limit error
+  qualify. User cancellations, quota caps, SQL errors, failed assertions,
+  unfinished jobs, and unverifiable failures stop the build.
+- **Evidence:** Every pass saves its `run_results.json`; every diagnosed
+  job saves its API response, including stages when available. CI uploads
+  these and the dbt log on success or failure, with seven-day retention.
+  Missing slot metrics remain unknown. Tests inject successive downstream
+  stalls, persistent failures, SQL/test failures, stale results, and a
+  deadline expiration to verify recovery and failure behavior.
+- **Scope:** This fixes CI's recovery policy. It does not establish or
+  repair the underlying BigQuery stall cause. Spending caps are unchanged.
 - **Date:** 2026-10-01
