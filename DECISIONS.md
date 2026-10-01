@@ -595,3 +595,34 @@ alternatives considered, why, date.
   column with no history or owner edits. If finance needs to remap
   countries without a deploy, it becomes a seed.
 - **Date:** 2026-10-01
+
+## 044. Dashboards: self-hosted Metabase OSS, defined as code
+
+- **Options:** Metabase Cloud (about $100/month), Metabase OSS self-hosted
+  (free), Looker Studio (free, but not the tool in the job description).
+- **Decision:** Metabase OSS in Docker on a laptop, with Postgres as its
+  application database on a persistent volume (Metabase's guidance for
+  anything beyond a trial; its default H2 file is not meant for real use).
+  BigQuery remains the only warehouse.
+- **As code:** Questions are native SQL in `metabase/dashboards.py`, created
+  through the Metabase API by `metabase/setup.py`. Clicking dashboards
+  together in the UI cannot be reviewed or rebuilt. The API flow was tested
+  against Metabase v0.63.19; the image is pinned to that version.
+- **Later:** An always-on demo needs hosting, for example a small GCP VM
+  (an estimated $30–35/month, not verified). Not done, so there is no
+  recurring cost.
+- **Date:** 2026-10-01
+
+## 045. Metabase's BigQuery credential is an open decision
+
+- **Constraint:** Metabase's BigQuery driver takes only a service-account JSON
+  key. The org enforces `iam.disableServiceAccountKeyCreation`, which is
+  why CI uses keyless Workload Identity Federation.
+- **Least-privilege shape if a key is allowed:** a dedicated `metabase-reader`
+  account with `bigquery.jobUser` on the project and `bigquery.dataViewer` on
+  `kiln_marts` only. The key is stored outside the repo with mode 600.
+  The policy exception is scoped to this project and lifted only for as long
+  as it takes to create the key.
+- **Status:** Waiting on the project owner. Changing an org security policy is
+  their call, not the pipeline's.
+- **Date:** 2026-10-01
