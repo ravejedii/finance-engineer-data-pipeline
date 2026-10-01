@@ -1,10 +1,14 @@
 name: full-build
 
 # The full 18-month dataset (about 353k orders), built into the persistent
-# `kiln` dataset that Metabase reads. Manual only: it never runs on a PR or
-# push, so it costs Actions minutes only when someone clicks "Run workflow".
+# `kiln` dataset that Metabase reads. Never runs on a PR or on main, so it
+# costs Actions minutes only when someone asks for it: click "Run workflow",
+# or push to the run-full-build branch (for tools that can push but not
+# dispatch workflows).
 on:
   workflow_dispatch:
+  push:
+    branches: [run-full-build]
 
 permissions:
   contents: read
