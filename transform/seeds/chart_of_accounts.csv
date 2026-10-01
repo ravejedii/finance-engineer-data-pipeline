@@ -11,5 +11,6 @@ account_code,account_name,account_type,normal_balance,description
 4000,platform_fee_revenue,revenue,credit,Kiln's fee on each order: the plan percentage plus a fixed fee.
 5000,processing_fee_expense,expense,debit,Fees processors charge Kiln per transaction.
 5100,dispute_losses,expense,debit,Dispute amounts and fees Kiln bears itself (not passed to a seller).
-5200,fx_gain_loss,expense,debit,Difference between Kiln's booking rate and the rate the money actually moved at. Debit = loss.
+5200,realized_fx_gain_loss,expense,debit,Difference between Kiln's booking rate and the rate the processor actually converted at. Debit = loss.
+5210,unrealized_fx_remeasurement,expense,debit,Month-end revaluation of EUR balances to the month-end rate. Debit = loss.
 5300,bad_debt_expense,expense,debit,Seller balances written off or reserved as unrecoverable.

@@ -233,3 +233,10 @@ def test_bigquery_schemas_avoid_reserved_column_prefixes():
     for schema in schemas:
         for field in schema:
             assert not field.name.upper().startswith(reserved), field.name
+
+
+def test_parallel_load_matches_sequential(raw):
+    sequential, parallel = MemoryWarehouse(), MemoryWarehouse()
+    load(raw, sequential)
+    load(raw, parallel, workers=8)
+    assert sequential.snapshot(ignore_load_ids=True) == parallel.snapshot(ignore_load_ids=True)

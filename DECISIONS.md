@@ -349,3 +349,68 @@ alternatives considered, why, date.
 - **Why:** A snapshot only records changes it observes between runs. A
   fresh warehouse, which is every CI run, would have no history at all.
 - **Date:** 2026-10-01
+
+## 026. GMV is not revenue: Kiln is an agent
+
+- **Decision:** Platform fee revenue (account 4000) is the only revenue.
+  GMV is reported as a volume metric (`fct_orders.gmv_usd_minor`). The
+  seller's share goes to seller payable, a liability, and never touches the
+  P&L.
+- **Why:** Under ASC 606 / IFRS 15, an entity is the principal only if it
+  controls the good before it's transferred to the customer. Kiln doesn't
+  control the seller's product: it can't set the price or choose what's
+  sold, and it carries no inventory. It arranges the sale. Booking GMV
+  would inflate reported revenue by roughly 10x on the same economics and
+  turn the seller payout into "cost of revenue".
+- **Date:** 2026-10-01
+
+## 027. Realized and unrealized FX are separate accounts
+
+- **Decision:** 5200 holds realized FX: the gap between Kiln's booking rate
+  and the processor's actual conversion, posted on each transaction. 5210
+  holds unrealized FX: the month-end revaluation of EUR balances (cash at
+  processor B, EUR in transit, EUR bank) to the month-end rate.
+- **Why:** Realized FX is a cost of how Kiln moves money, so pricing and
+  processor choice can change it. Unrealized FX comes from holding EUR, and
+  treasury can hedge it or sweep the balances. Mixing the two hides both.
+- **How the remeasurement entry works:** Each month it books the change in
+  the gap between the target (EUR balance × month-end rate) and the
+  carrying amount from transactions. So the cumulative adjustment always
+  equals the current gap, with nothing booked twice or missed.
+- **Date:** 2026-10-01
+
+## 028. Bad debt: reserve aged seller receivables in full, release on recovery
+
+- **Decision:** At each month-end, a seller whose payable has been negative
+  for at least `bad_debt_aging_days` (var, default 90) is reserved for the
+  full receivable. The close entry books the change in the total reserve,
+  so recoveries reverse automatically.
+- **Alternatives:** A percentage-of-balance reserve, or aging buckets with
+  rising percentages (30/60/90).
+- **Why:** It's simple to explain and the threshold is policy, held in a
+  var. Buckets are the obvious next step once real recovery-rate data
+  exists to calibrate them.
+- **Date:** 2026-10-01
+
+## 029. dbt unit tests pin the accounting logic to hand-checked numbers
+
+- **Decision:** Three unit tests with numbers worked out by hand:
+  - A EUR charge books realized FX as the balancing line ($1.11 loss).
+  - A charge with no Kiln order goes to suspense.
+  - A seller receivable is reserved at 39 days with a 30-day threshold,
+    then released when the balance recovers.
+- **Why:** Data tests prove the books balance, but a ledger can balance and
+  still be wrong. Unit tests prove a specific input produces the specific
+  journal lines an accountant would write.
+- **Date:** 2026-10-01
+
+## 030. Loader: uploads in parallel, commits one at a time
+
+- **Decision:** `write_batch` runs on 8 threads. Scratch-table uploads
+  overlap, and the delete-and-insert transactions are serialized with a
+  lock.
+- **Why:** Every source's transaction also writes `load_manifest` and
+  `load_exceptions`, and BigQuery aborts concurrent transactions on the same
+  table. The uploads are most of the time, so this keeps nearly all the
+  speedup without the aborts.
+- **Date:** 2026-10-01

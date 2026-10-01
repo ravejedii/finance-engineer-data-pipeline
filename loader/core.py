@@ -13,6 +13,7 @@ import csv
 import hashlib
 import io
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -46,14 +47,20 @@ class FileResult:
 
 
 def load(raw_dir: Path, warehouse: Warehouse, start: date | None = None,
-         end: date | None = None, run_id: str | None = None) -> list[FileResult]:
-    """Load every file under raw_dir, or only dated files within [start, end]."""
+         end: date | None = None, run_id: str | None = None,
+         workers: int = 1) -> list[FileResult]:
+    """Load every file under raw_dir, or only dated files within [start, end].
+
+    Sources are independent (each writes its own table in its own transaction),
+    so with workers > 1 their warehouse writes run in parallel.
+    """
     raw_dir = Path(raw_dir)
     load_id = run_id or uuid.uuid4().hex
     loaded_at = datetime.now(timezone.utc).isoformat()
     ranged = start is not None or end is not None
     known = warehouse.manifest_checksums()
     results: list[FileResult] = []
+    writes: list[tuple] = []
 
     for source in SOURCES:
         batch_files, batch_rows, batch_exc, batch_manifest = [], [], [], []
@@ -95,7 +102,15 @@ def load(raw_dir: Path, warehouse: Warehouse, start: date | None = None,
                                       0 if reason else len(exceptions)))
 
         if batch_files:
-            warehouse.write_batch(source, batch_files, batch_rows, batch_exc, batch_manifest)
+            writes.append((source, batch_files, batch_rows, batch_exc, batch_manifest))
+
+    if workers > 1 and len(writes) > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for future in [pool.submit(warehouse.write_batch, *w) for w in writes]:
+                future.result()  # re-raise the first failure
+    else:
+        for w in writes:
+            warehouse.write_batch(*w)
     return results
 
 

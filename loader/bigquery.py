@@ -11,6 +11,7 @@ Each source's new files are written in one step:
 from __future__ import annotations
 
 import re
+import threading
 import uuid
 from datetime import date
 
@@ -57,6 +58,10 @@ class BigQueryWarehouse:
     def __init__(self, project: str, dataset: str, location: str = "US") -> None:
         self.client = bigquery.Client(project=project, location=location)
         self.project, self.dataset, self.location = project, dataset, location
+        # Every source's transaction also writes load_manifest and load_exceptions.
+        # Concurrent transactions on one table abort each other, so scratch loads
+        # (the slow part) run in parallel and the short transactions run one at a time.
+        self._commit_lock = threading.Lock()
         self._ensure()
 
     def _ref(self, table: str) -> str:
@@ -142,7 +147,8 @@ class BigQueryWarehouse:
                     f"insert into `{self._ref(target)}` ({cols}) select {cols} from `{ref}`;"
                 )
             statements.append("commit transaction;")
-            self.client.query("\n".join(statements)).result()
+            with self._commit_lock:
+                self.client.query("\n".join(statements)).result()
         finally:
             for ref in scratch:
                 self.client.delete_table(ref, not_found_ok=True)
