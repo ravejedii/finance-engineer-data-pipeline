@@ -79,7 +79,7 @@ def test_different_seed_different_data(out, tmp_path):
 def test_processor_a_money_is_exact(a_rows):
     checked = 0
     for r in a_rows:
-        if r["gross"] == "N/A" or not r["balance_transaction_id"]:
+        if r["gross"] == "N/A" or not r["balance_transaction_id"] or None in r.values():
             continue
         for col in ("gross", "fee", "net"):
             assert re.fullmatch(r"-?\d+\.\d{2}", r[col]), (col, r[col])
@@ -283,3 +283,8 @@ def test_data_issues_doc_matches_small_scale(issues):
     assert rows, "DATA_ISSUES.md table not found"
     documented = {k: int(v.replace(",", "")) for k, v in rows}
     assert documented == {k: v["count"] for k, v in issues.items()}
+
+
+def test_processor_a_truncated_rows(a_rows, issues):
+    truncated = sorted(r["balance_transaction_id"] for r in a_rows if None in r.values())
+    assert truncated == issues["processor_a_truncated_rows"]["balance_transaction_ids"]

@@ -15,10 +15,11 @@ column stops matching the generator.
 | `processor_a_duplicate_rows` | 3 | 794 | Exact copy of a balance transaction, re-sent in the next day's file. | Phase 3 staging dedupe; test that each `balance_transaction_id` is unique |
 | `processor_a_late_rows` | 5 | 1,324 | Row first appears 1–3 files after its `created_utc` date. | Phase 2 lands it; Phase 3 incremental lookback picks it up |
 | `processor_a_restated_rows` | 3 | 530 | Same `balance_transaction_id` re-sent later with a corrected `fee` and `net`. The later version is correct. | Phase 3 staging keeps the latest version by file date |
-| `processor_a_malformed_rows` | 2 | 5 | `gross` = `N/A`, or empty `balance_transaction_id`. | Phase 2 loader exceptions table |
+| `processor_a_malformed_rows` | 2 | 5 | `gross` = `N/A`, or empty `balance_transaction_id`. | Phase 2 lands them verbatim; Phase 3 staging routes them to exceptions |
+| `processor_a_truncated_rows` | 1 | 3 | Line cut off after 9 of 14 fields (a partial write). | Phase 2 loader exceptions table |
 | `processor_b_duplicate_rows` | 2 | 102 | Exact copy of a row, re-sent in the next batch file. | Phase 3 staging dedupe on (Psp Reference, Type, Modification Reference) |
 | `processor_b_late_rows` | 2 | 203 | Row booked on one CET day that arrives in the next day's batch. | Phase 3; settles in the later batch, so the ledger follows the batch |
-| `processor_b_malformed_rows` | 1 | 5 | `Net Credit (NC)` written with a decimal comma (`12,34`). | Phase 2 loader exceptions table |
+| `processor_b_malformed_rows` | 1 | 5 | `Net Credit (NC)` written with a decimal comma (`12,34`). | Phase 2 lands them verbatim; Phase 3 staging routes them to exceptions |
 | `processor_b_missing_batch_file` | 1 | 1 | One batch file never arrives (small: batch 65, 2025-08-04; full: batch 275, 2024-12-31). Its payout still reaches the EUR bank account. | Phase 5: batch-number gap test, plus a bank-vs-settlement recon break |
 | `orders_without_settlement` | 4 | 169 | Kiln order marked `paid` that no processor settled. The seller was still credited. | Phase 5 order-to-settlement matching |
 | `settlements_without_order` | 4 | 101 | Processor charge whose Kiln order reference doesn't exist in the app DB. | Phase 5 order-to-settlement matching |
@@ -41,6 +42,11 @@ These come from how the business works; none of them is injected damage.
 
 ## Consequences to expect downstream
 
+- **Two kinds of bad rows, two places they're caught.** A row that can't
+  be split into the contracted columns (truncated) never reaches raw: the
+  loader sends it to `load_exceptions`. A row that splits fine but has a bad
+  value (`N/A`, `12,34`) lands in raw as text, and staging routes it to
+  exceptions. Raw stays a faithful copy of what arrived.
 - **Malformed rows are money that goes missing from the source.** A
   malformed row is the only copy of that transaction, so after it lands in
   exceptions, reconciliation should show a break equal to its amount. That

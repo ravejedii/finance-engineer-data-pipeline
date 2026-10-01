@@ -26,6 +26,7 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -43,6 +44,8 @@ jobs:
   build:
     needs: lint
     runs-on: ubuntu-latest
+    # A hung BigQuery call would otherwise hold the runner for GitHub's 6-hour default.
+    timeout-minutes: 15
     permissions:
       contents: read
       id-token: write  # lets the job request a GitHub OIDC token for GCP
@@ -69,6 +72,17 @@ jobs:
       - name: dbt debug
         working-directory: transform
         run: uv run dbt debug
+      - name: Generate small-scale raw files
+        run: uv run python -m generator --scale small
+      - name: Load raw files into BigQuery
+        run: uv run python -m loader load
+      - name: Re-load must be a no-op (idempotency)
+        run: uv run python -m loader load --expect-noop
+      - name: Warehouse counts match the load manifest
+        run: uv run python -m loader verify
+      - name: dbt source freshness
+        working-directory: transform
+        run: uv run dbt source freshness
       - name: dbt build
         working-directory: transform
         run: uv run dbt build
