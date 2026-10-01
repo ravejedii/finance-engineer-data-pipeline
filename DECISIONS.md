@@ -498,3 +498,16 @@ alternatives considered, why, date.
   109-row table that normally builds in 3 seconds timed out. Each run passed
   when it ran alone. A waiting build costs no runner time.
 - **Date:** 2026-10-01
+
+## 038. Every CI run builds into a never-reused dataset name
+
+- **Decision:** `DBT_DATASET = ci_<run_id>_<attempt>`, replacing
+  `ci_pr_<n>`. Cleanup still drops everything with that prefix.
+- **Evidence:** A stalled `fct_ledger_entries` build started 0.6 s after
+  submission and then ran 198 s using only 11 slot-seconds. It was waiting,
+  not computing. The retry built it in 5 s. Every stall was a table write,
+  and each PR's first run (fresh names) passed; repeat runs reused names
+  dropped seconds earlier.
+- **Status:** This is a hypothesis. The job-timeline diagnostic stays in CI
+  to confirm or refute it.
+- **Date:** 2026-10-01

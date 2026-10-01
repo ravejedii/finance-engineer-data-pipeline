@@ -57,7 +57,9 @@ jobs:
       id-token: write  # lets the job request a GitHub OIDC token for GCP
     env:
       DBT_TARGET: ci
-      DBT_DATASET: ci_pr_${{ github.event.pull_request.number || github.run_id }}
+      # A fresh dataset name every run. Reusing a name dropped seconds earlier
+      # correlated with table writes that started but sat idle until timeout.
+      DBT_DATASET: ci_${{ github.run_id }}_${{ github.run_attempt }}
     steps:
       - name: Require GCP identity config
         run: |
