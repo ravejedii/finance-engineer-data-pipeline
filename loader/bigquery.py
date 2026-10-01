@@ -10,6 +10,7 @@ Each source's new files are written in one step:
 
 from __future__ import annotations
 
+import concurrent.futures
 import re
 import threading
 import time
@@ -51,6 +52,8 @@ MANIFEST_FIELDS = [
 _SAFE_FILE = re.compile(r"^[A-Za-z0-9_./-]+$")
 # Every BigQuery wait is bounded: a stuck job raises instead of hanging CI.
 JOB_TIMEOUT_S = 300
+APPEND_WAIT_S = 60
+APPEND_ATTEMPTS = 3
 
 
 def source_schema(source: Source) -> list[bigquery.SchemaField]:
@@ -130,14 +133,30 @@ class BigQueryWarehouse:
         return ref
 
     def _append(self, table: str, rows: list[dict], schema: list[bigquery.SchemaField]) -> None:
+        """Append with a free load job. A load job that hasn't finished in
+        APPEND_WAIT_S is cancelled and resubmitted: CI saw occasional load jobs
+        sit unfinished for 5+ minutes. A cancelled load job never commits, so a
+        resubmit can't duplicate rows."""
         if not rows:
             return
-        self.client.load_table_from_json(
-            [_jsonable(r) for r in rows], self._ref(table),
-            job_config=bigquery.LoadJobConfig(
-                schema=schema, write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
-            ),
-        ).result(timeout=JOB_TIMEOUT_S)
+        payload = [_jsonable(r) for r in rows]
+        config = bigquery.LoadJobConfig(
+            schema=schema, write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+        )
+        for attempt in range(1, APPEND_ATTEMPTS + 1):
+            job = self.client.load_table_from_json(payload, self._ref(table), job_config=config)
+            try:
+                job.result(timeout=APPEND_WAIT_S)
+                return
+            except concurrent.futures.TimeoutError:
+                job.reload()
+                print(f"  {table}: load job {job.job_id} still {job.state} after "
+                      f"{APPEND_WAIT_S}s (attempt {attempt}); cancelling", flush=True)
+                self.client.cancel_job(job.job_id, location=self.location)
+                _wait_until_done(job)
+                if job.error_result is None and job.state == "DONE":
+                    return  # it finished just as we cancelled: the rows are in, stop
+        raise TimeoutError(f"append to {table} did not complete in {APPEND_ATTEMPTS} attempts")
 
     def _files_present(self, source: Source, files_sql: str) -> set[str]:
         rows = self._query(f"""
@@ -212,6 +231,16 @@ class BigQueryWarehouse:
         finally:
             for ref in scratch:
                 self.client.delete_table(ref, not_found_ok=True)
+
+
+def _wait_until_done(job: bigquery.LoadJob, seconds: int = 60) -> None:
+    """After a cancel request, wait for the job to reach DONE (cancelled or not)."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        job.reload()
+        if job.state == "DONE":
+            return
+        time.sleep(2)
 
 
 def _jsonable(row: dict) -> dict:
