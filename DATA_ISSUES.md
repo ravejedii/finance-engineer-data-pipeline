@@ -54,9 +54,18 @@ These come from how the business works; none of them is injected damage.
   exceptions, reconciliation should show a break equal to its amount. That
   break is correct. A reconciliation that shows zero breaks would be hiding
   the problem.
-- **The missing processor B file** shows up twice: as a gap in batch
-  numbers, and as a EUR bank receipt (`PAYOUT-0065` small / `PAYOUT-0275`
-  full) with no settlement detail behind it.
+- **The missing processor B file** shows up three times: as a gap in batch
+  numbers; as a EUR bank receipt (`PAYOUT-0065` small / `PAYOUT-0275`
+  full) with no settlement detail behind it; and, at full scale, as two won
+  chargebacks (orders 80985 and 87735) whose chargeback sat in the missing
+  file but whose reversal arrived later. The ledger sees only the reversal,
+  so those orders show a negative dispute loss. `fct_orphan_dispute_reversals`
+  lists them (warn), and the coverage check asserts exactly these orders.
+  This was found by the full-scale build, not designed in up front.
+- **Issues can overlap.** The generator picks each issue independently, so at
+  full scale one processor B line is both late and malformed. Malformed wins:
+  it goes to exceptions, and the coverage check expects it there, not in
+  staging.
 - **Small scale runs short** (four months), so no seller in it is negative
   for 90+ days (2 sellers are negative for 30+). CI exercises bad-debt
   recognition by setting the aging-threshold var to 30. Phase 4 unit tests

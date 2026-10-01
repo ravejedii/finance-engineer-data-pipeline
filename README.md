@@ -83,15 +83,24 @@ The generator records every problem it plants, row by row, in
 `data/truth/expected_issues.json`. CI builds the whole pipeline in a
 throwaway BigQuery dataset on every PR. Then `scripts/check_issue_coverage.py`
 checks the warehouse against the answer key, issue by issue and by row ID.
-Nothing may disappear silently: **16 of 16 checks pass**. The planted problems
+Nothing may disappear silently: **17 of 17 checks pass**. The planted problems
 are listed in [DATA_ISSUES.md](DATA_ISSUES.md).
 
-| | Small (CI, every PR) | Full |
+| | Small (CI, every PR) | Full (`full-build` workflow) |
 |---|---|---|
 | Period | Jun–Sep 2025 | Apr 2024–Sep 2025 |
 | Orders | ~1,300 | 353,389 |
 | Sellers | | 2,661 |
-| dbt models / tests | 36 / 64 | 36 / 64 |
+| dbt models / data tests / unit tests | 37 / 66 / 3 | 37 / 66 / 3 |
+| Answer-key checks | 17 / 17 | 17 / 17 |
+| dbt build time | | 1.7 min (107 nodes) |
+| Full pipeline, re-run (generate → load → verify → build → checks) | | about 3 min |
+
+The full-scale build found something the small one couldn't. Two won
+chargebacks sat in the missing processor B file while their reversals
+arrived, so the ledger credited sellers money it never saw leave. The
+pipeline now flags them (`fct_orphan_dispute_reversals`), and the answer key
+asserts exactly those two orders. See DATA_ISSUES.md.
 
 ## Key decisions
 

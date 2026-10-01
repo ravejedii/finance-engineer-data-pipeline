@@ -153,6 +153,12 @@ def apply_file_mess(rendered: Rendered, truth: Truth, seed: int) -> dict:
         "rows_in_missing_file": len(dropped),
         "payout_eur_minor": dropped_payout,
         "charge_order_ids": dropped_charge_orders,
+        # Won chargebacks whose Chargeback row was in the missing file but whose
+        # ChargebackReversed row arrived later: the ledger sees only the reversal.
+        "orphaned_reversal_order_ids": sorted(
+            {_b_order(r) for r in dropped if r["Type"] == "Chargeback"}
+            & {_b_order(r) for r in rendered.b_rows if r["Type"] == "ChargebackReversed"}
+        ),
     }
 
     exclude = {id(r) for r in dups} | {id(r) for r in dup_rows}
@@ -261,6 +267,10 @@ def _charge_orders(rows: list[dict]) -> list[int]:
     """Kiln orders whose processor A charge row is among these rows."""
     return sorted(int(r["payment_metadata[kiln_order_id]"]) for r in rows
                   if r["reporting_category"] == "charge" and r["payment_metadata[kiln_order_id]"])
+
+
+def _b_order(row: dict) -> int:
+    return int(row["Merchant Reference"].removeprefix("KILN-"))
 
 
 def _b_key(row: dict) -> str:

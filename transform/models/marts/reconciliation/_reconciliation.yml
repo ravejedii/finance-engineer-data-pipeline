@@ -105,6 +105,33 @@ models:
               arguments:
                 values: [ok, break]
 
+  - name: fct_orphan_dispute_reversals
+    description: >
+      Orders with a won chargeback (dispute_reversal) but no chargeback on
+      record, so the seller is credited money the ledger never saw leave.
+      Usually caused by a missing settlement file. Each row is a break to raise
+      with the processor.
+    columns:
+      - name: kiln_order_id
+        description: The order the reversal belongs to.
+        data_tests:
+          - not_null
+      - name: processor
+        description: Processor that reported the reversal.
+      - name: disputes_reported
+        description: Chargebacks the processor reported for the order.
+      - name: reversals_reported
+        description: Chargeback reversals the processor reported for the order.
+      - name: first_reversal_date
+        description: Posting date of the first reversal.
+      - name: reversal_credited_to_seller_usd_minor
+        description: USD cents credited to the seller by the reversals (positive).
+    data_tests:
+      # Detection, not a failure, like fct_processor_b_batch_gaps.
+      - is_empty:
+          config:
+            severity: warn
+
   - name: fct_processor_b_batch_gaps
     description: >
       Missing processor B batch files, detected from gaps in the consecutive

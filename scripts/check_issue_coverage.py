@@ -107,11 +107,17 @@ def main() -> None:
     c.check("processor_b_duplicate_rows", stg_n == len(keys),
             f"{len(keys)} duplicated lines -> {stg_n} staging rows")
 
-    keys = [b_key(k) for k in issues["processor_b_late_rows"]["keys"]]
+    # A line can be both late and malformed (the generator picks them
+    # independently). Malformed wins: that line belongs in exceptions.
+    malformed = set(issues["processor_b_malformed_rows"]["keys"])
+    late = issues["processor_b_late_rows"]["keys"]
+    keys = [b_key(k) for k in late if k not in malformed]
     stg_n = c.scalar(f"select count(*) from `{stg}.stg_processor_b__settlement_details` "
                      "where settlement_line_id in unnest(@keys)", keys=keys)
+    also_bad = len(late) - len(keys)
     c.check("processor_b_late_rows", stg_n == len(keys),
-            f"{stg_n}/{len(keys)} late lines present in staging")
+            f"{stg_n}/{len(keys)} late lines present in staging"
+            + (f" (+{also_bad} also malformed, checked as exceptions)" if also_bad else ""))
 
     keys = [b_key(k) for k in issues["processor_b_malformed_rows"]["keys"]]
     got_n = c.scalar(f"select count(*) from `{stg}.stg_exceptions` "
@@ -129,6 +135,13 @@ def main() -> None:
     c.check("processor_b_missing_batch_file",
             gaps == [missing["batch_number"]] and status == "bank_receipt_without_report",
             f"gaps={gaps}, {ref} recon_status={status}")
+
+    # A won chargeback whose chargeback sat in the missing file shows up as a
+    # reversal with no dispute; exactly those orders, no more, no fewer.
+    expected = set(missing["orphaned_reversal_order_ids"])
+    got = {r[0] for r in c.q(f"select kiln_order_id from `{marts}.fct_orphan_dispute_reversals`")}
+    c.check("processor_b_orphaned_dispute_reversals", got == expected,
+            f"expected {sorted(expected)}, warehouse has {sorted(got)}")
 
     # ---- System mismatches -----------------------------------------------------
     # Every unsettled order must be explained: planted, or its charge sat in the
