@@ -515,19 +515,26 @@ alternatives considered, why, date.
 
 ## 039. Transient BigQuery write stalls are retried, and every stall is logged
 
-- **Evidence (from the job's full metadata and the project's job history):**
-  The stalled jobs started within 0.2 s and recorded no compute, and their
-  output (write) stage never completed before the timeout. The same
-  statement rebuilt in 3 s on retry. History also shows a `backendError`.
-  There were no `usageQuotaExceeded` errors, so the daily query cap is not
-  the cause. Stalls happened with and without concurrent CI runs, and with
-  fresh and reused dataset names.
+- **Established:** The stalled jobs started within 0.2–0.6 s, then ran
+  until the server-side timeout. On retry the same statement built in about
+  3 s. Every stall so far has been a table write (CTAS or a load job), never
+  a view or a test. There were no `usageQuotaExceeded` errors in the
+  project's job history, so there is no evidence against the daily query
+  cap. Stalls happened with and without concurrent CI runs, and with fresh
+  and reused dataset names. No SQL assertion failed.
+- **Not established:** Why BigQuery stalls. `bq show` on PR #7's two
+  stalled jobs confirmed the timeout but recorded no execution stages or
+  internal wait reason. Earlier stalled jobs showed unfinished output
+  stages, and the history includes one `backendError`. That suggests a
+  write-path problem, but it remains a hypothesis.
 - **Decision:** CI jobs time out at 90 s (healthy models take 3–8 s). A
   failed `dbt build` is followed by up to two `dbt retry` passes, each
   preceded by `scripts/diagnose_bq_jobs.py`, which prints the failed job's
   created/started/ended timeline and compute use. Each retry raises a CI
   warning, so retried runs are visible, not silent.
-- **Why:** Google documents `backendError` as transient and to be retried.
-  The fault is outside this project's control, so the right handling is to
-  detect it quickly, retry, and keep the evidence.
+- **Why:** With the cause unknown and the failure transient (an immediate
+  retry succeeds), this keeps CI usable without hiding anything. Every stall
+  still prints its job timeline and raises a warning. If stalls persist or
+  a retry fails, the next step is a Google Cloud support case with these job
+  IDs. This is a mitigation, not a root-cause fix.
 - **Date:** 2026-10-01
