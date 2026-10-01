@@ -348,21 +348,6 @@ alternatives considered, why, date.
   effective-dated `seller_plan_changes`.
 - **Why:** A snapshot only records changes it observes between runs. A
   fresh warehouse, which is every CI run, would have no history at all.
-## 031. Loader: free appends for new files, transactions only for replacements; every wait bounded
-
-- **Decision:** Before writing a source, the loader checks whether any of its
-  files already have rows. If none do (every first load, so every CI run),
-  rows, exceptions and manifest are appended with free load jobs, manifest
-  last. Only re-sent files go through the delete-and-insert transaction.
-  Every BigQuery wait has a timeout (300 s per job, 60 s per API call), and
-  the loader prints one progress line per source.
-- **Why:** Two CI runs hung in the load step for 20 minutes with no output.
-  Using DML transactions for files that had nothing to delete was the
-  slowest, most failure-prone part of loading. Writing the manifest last
-  keeps a crashed run safe: its rows have no manifest entry, so the next run
-  sees the files as present and replaces them atomically.
-- **Date:** 2026-10-01
-
 ## 026. GMV is not revenue: Kiln is an agent
 
 - **Decision:** Platform fee revenue (account 4000) is the only revenue.
@@ -426,4 +411,19 @@ alternatives considered, why, date.
   `load_exceptions`, and BigQuery aborts concurrent transactions on the same
   table. The uploads are most of the time, so this keeps nearly all the
   speedup without the aborts.
+- **Date:** 2026-10-01
+
+## 031. Loader: free appends for new files, transactions only for replacements; every wait bounded
+
+- **Decision:** Before writing a source, the loader checks whether any of its
+  files already have rows. If none do (every first load, so every CI run),
+  rows, exceptions and manifest are appended with free load jobs, manifest
+  last. Only re-sent files go through the delete-and-insert transaction.
+  Every BigQuery wait has a timeout (300 s per job, 60 s per API call), and
+  the loader prints one progress line per source.
+- **Why:** Two CI runs hung in the load step for 20 minutes with no output.
+  Using DML transactions for files that had nothing to delete was the
+  slowest, most failure-prone part of loading. Writing the manifest last
+  keeps a crashed run safe: its rows have no manifest entry, so the next run
+  sees the files as present and replaces them atomically.
 - **Date:** 2026-10-01
