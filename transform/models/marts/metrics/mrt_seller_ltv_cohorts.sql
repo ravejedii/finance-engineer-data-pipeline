@@ -34,9 +34,10 @@ grid as (
         activity_month
     from cohorts
     cross join bounds
-    cross join unnest(generate_date_array(
-        cohorts.cohort_month, bounds.last_month, interval 1 month
-    )) as activity_month
+    cross join
+        unnest(generate_date_array(
+            cohorts.cohort_month, bounds.last_month, interval 1 month
+        )) as activity_month
     where cohorts.cohort_month >= bounds.first_month
 ),
 

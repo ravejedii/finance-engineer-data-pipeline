@@ -86,7 +86,8 @@ select
     sequenced.previous_active_month,
     sequenced.next_active_month,
     case
-        when sequenced.previous_active_month
+        when
+            sequenced.previous_active_month
             = date_sub(sequenced.activity_month, interval 1 month)
             then 'retained'
         when sequenced.previous_active_month is not null then 'reactivated'
@@ -94,14 +95,17 @@ select
         else 'first_seen'
     end as arrival,
     case
-        when sequenced.next_active_month
+        when
+            sequenced.next_active_month
             = date_add(sequenced.activity_month, interval 1 month)
             then 'retained'
-        when sequenced.next_active_month
+        when
+            sequenced.next_active_month
             <= date_add(sequenced.activity_month, interval 3 month)
             then 'paused'
         when sequenced.next_active_month is not null then 'churned'
-        when date_add(sequenced.activity_month, interval 3 month)
+        when
+            date_add(sequenced.activity_month, interval 3 month)
             <= window_bounds.last_complete_month
             then 'churned'
         else 'undetermined'
