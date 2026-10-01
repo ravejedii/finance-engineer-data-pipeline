@@ -24,7 +24,7 @@ kiln:
       # One dataset family per PR (ci_pr_<n>), dropped at the end of the run.
       dataset: "{{ env_var('DBT_DATASET') }}"
       location: "{{ env_var('BQ_LOCATION', 'US') }}"
-      threads: 8
+      threads: 4
       job_execution_timeout_seconds: 300
       job_retries: 1
       priority: interactive

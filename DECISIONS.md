@@ -488,3 +488,13 @@ alternatives considered, why, date.
 - **Why:** Comparing against the warehouse catalog catches new columns nobody
   documented. Checking only the YAML would miss those.
 - **Date:** 2026-10-01
+
+## 037. CI runs one BigQuery build at a time
+
+- **Decision:** The build job joins a repository-wide concurrency group
+  (`bigquery-ci`, no cancelling), and the `ci` profile uses 4 dbt threads.
+- **Why:** When four PRs built at once (about 40 concurrent BigQuery jobs),
+  BigQuery queued jobs long enough to hit the 5-minute job timeout. A
+  109-row table that normally builds in 3 seconds timed out. Each run passed
+  when it ran alone. A waiting build costs no runner time.
+- **Date:** 2026-10-01

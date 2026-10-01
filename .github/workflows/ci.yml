@@ -46,6 +46,12 @@ jobs:
     runs-on: ubuntu-latest
     # A hung BigQuery call would otherwise hold the runner for GitHub's 6-hour default.
     timeout-minutes: 15
+    # One BigQuery build at a time across the whole repo. Parallel runs from
+    # several PRs pushed BigQuery into queueing jobs past our 5-minute limit.
+    # A waiting build sits in GitHub's queue, not on a runner.
+    concurrency:
+      group: bigquery-ci
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write  # lets the job request a GitHub OIDC token for GCP

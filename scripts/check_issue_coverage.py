@@ -131,14 +131,20 @@ def main() -> None:
             f"gaps={gaps}, {ref} recon_status={status}")
 
     # ---- System mismatches -----------------------------------------------------
-    ids = issues["orders_without_settlement"]["order_ids"]
-    got_n = c.scalar(f"select count(*) from `{marts}.fct_order_settlement_matches` "
-                     "where order_id in unnest(@ids) and match_status = 'order_without_settlement'",
-                     ids=ids)
-    total = c.scalar(f"select count(*) from `{marts}.fct_order_settlement_matches` "
-                     "where match_status = 'order_without_settlement'")
-    c.check("orders_without_settlement", got_n == len(ids) == total,
-            f"{got_n}/{len(ids)} flagged; {total} flagged in total")
+    # Every unsettled order must be explained: planted, or its charge sat in the
+    # missing file or in a row that went to exceptions.
+    planted = set(issues["orders_without_settlement"]["order_ids"])
+    explained = planted | set(missing["charge_order_ids"])
+    for key in ("processor_a_malformed_rows", "processor_a_truncated_rows",
+                "processor_b_malformed_rows"):
+        explained |= set(issues[key]["charge_order_ids"])
+    flagged = {r[0] for r in c.q(f"select order_id from `{marts}.fct_order_settlement_matches` "
+                                 "where match_status = 'order_without_settlement'")}
+    c.check("orders_without_settlement", flagged == explained,
+            f"{len(flagged)} flagged = {len(planted)} planted + {len(explained - planted)} "
+            f"whose charge was in the missing file or an exception row"
+            + ("" if flagged == explained else
+               f"; unexplained={sorted(flagged - explained)} missed={sorted(explained - flagged)}"))
 
     refs = issues["settlements_without_order"]["charge_refs"]
     got_n = c.scalar(f"select count(*) from `{marts}.fct_order_settlement_matches` "
@@ -178,8 +184,9 @@ def main() -> None:
     c.check("processor_a_payouts_failed", got_n == expected,
             f"{got_n} failed payouts reconciled as returned, expected {expected}")
 
-    expected = (issues["seller_payouts_failed"]["count"]
-                + issues["seller_payouts_reversed"]["count"])
+    # Returns dated after the period end haven't happened yet in this data.
+    expected = (issues["seller_payouts_failed"]["returned_in_period"]
+                + issues["seller_payouts_reversed"]["returned_in_period"])
     got_n = c.scalar(f"select count(distinct journal_entry_id) from "
                      f"`{marts}.fct_ledger_entries` "
                      "where source_event_type = 'seller_payout_return'")
