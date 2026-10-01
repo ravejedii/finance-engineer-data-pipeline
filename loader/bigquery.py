@@ -11,6 +11,7 @@ Each source's new files are written in one step:
 from __future__ import annotations
 
 import re
+import time
 import uuid
 from datetime import date
 
@@ -47,6 +48,8 @@ MANIFEST_FIELDS = [
     bigquery.SchemaField("loaded_at", "TIMESTAMP", mode="REQUIRED"),
 ]
 _SAFE_FILE = re.compile(r"^[A-Za-z0-9_./-]+$")
+# Every BigQuery wait is bounded: a stuck job raises instead of hanging CI.
+JOB_TIMEOUT_S = 300
 
 
 def source_schema(source: Source) -> list[bigquery.SchemaField]:
@@ -65,20 +68,21 @@ class BigQueryWarehouse:
     def _ensure(self) -> None:
         ds = bigquery.Dataset(f"{self.project}.{self.dataset}")
         ds.location = self.location
-        self.client.create_dataset(ds, exists_ok=True)
+        self.client.create_dataset(ds, exists_ok=True, timeout=60)
         for source in SOURCES:
             table = bigquery.Table(self._ref(source.table), schema=source_schema(source))
             table.clustering_fields = ["_source_file"]
-            self.client.create_table(table, exists_ok=True)
+            self.client.create_table(table, exists_ok=True, timeout=60)
         exc = bigquery.Table(self._ref("load_exceptions"), schema=EXCEPTION_FIELDS)
         exc.clustering_fields = ["_source_file"]
-        self.client.create_table(exc, exists_ok=True)
+        self.client.create_table(exc, exists_ok=True, timeout=60)
         self.client.create_table(
-            bigquery.Table(self._ref("load_manifest"), schema=MANIFEST_FIELDS), exists_ok=True
+            bigquery.Table(self._ref("load_manifest"), schema=MANIFEST_FIELDS), exists_ok=True,
+            timeout=60,
         )
 
     def _query(self, sql: str) -> list[bigquery.Row]:
-        return list(self.client.query(sql).result())
+        return list(self.client.query(sql).result(timeout=JOB_TIMEOUT_S))
 
     def latest_manifest(self) -> dict[str, dict]:
         rows = self._query(f"""
@@ -112,8 +116,28 @@ class BigQueryWarehouse:
                 schema=schema, write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
             ),
         )
-        job.result()
+        job.result(timeout=JOB_TIMEOUT_S)
         return ref
+
+    def _append(self, table: str, rows: list[dict], schema: list[bigquery.SchemaField]) -> None:
+        if not rows:
+            return
+        self.client.load_table_from_json(
+            [_jsonable(r) for r in rows], self._ref(table),
+            job_config=bigquery.LoadJobConfig(
+                schema=schema, write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            ),
+        ).result(timeout=JOB_TIMEOUT_S)
+
+    def _files_present(self, source: Source, files_sql: str) -> set[str]:
+        rows = self._query(f"""
+            select distinct _source_file from `{self._ref(source.table)}`
+            where _source_file in ({files_sql})
+            union distinct
+            select distinct _source_file from `{self._ref('load_exceptions')}`
+            where _source_file in ({files_sql})
+        """)
+        return {r["_source_file"] for r in rows}
 
     def write_batch(self, source: Source, file_names: list[str], rows: list[dict],
                     exceptions: list[dict], manifest_rows: list[dict]) -> None:
@@ -121,6 +145,29 @@ class BigQueryWarehouse:
             if not _SAFE_FILE.match(name):
                 raise ValueError(f"unsafe file name for SQL: {name!r}")
         files = ", ".join(f"'{name}'" for name in file_names)
+        started = time.monotonic()
+        if not self._files_present(source, files):
+            # Fast path: none of these files has rows yet, so nothing needs deleting.
+            # Free load jobs append directly. The manifest goes last: if a run dies
+            # midway, the next run finds rows with no manifest entry, treats the
+            # files as present, and replaces them through the transaction below.
+            self._append(source.table, rows, source_schema(source))
+            self._append("load_exceptions", exceptions, EXCEPTION_FIELDS)
+            self._append("load_manifest", manifest_rows, MANIFEST_FIELDS)
+            self._log(source, file_names, rows, "append", started)
+            return
+        self._replace(source, files, rows, exceptions, manifest_rows)
+        self._log(source, file_names, rows, "replace", started)
+
+    @staticmethod
+    def _log(source: Source, file_names: list[str], rows: list[dict], mode: str,
+             started: float) -> None:
+        print(f"  {source.table}: {len(file_names)} files, {len(rows):,} rows, {mode}, "
+              f"{time.monotonic() - started:.1f}s", flush=True)
+
+    def _replace(self, source: Source, files: str, rows: list[dict],
+                 exceptions: list[dict], manifest_rows: list[dict]) -> None:
+        """Some of these files were loaded before: delete and re-insert atomically."""
         scratch = []
         try:
             statements = [
@@ -142,7 +189,7 @@ class BigQueryWarehouse:
                     f"insert into `{self._ref(target)}` ({cols}) select {cols} from `{ref}`;"
                 )
             statements.append("commit transaction;")
-            self.client.query("\n".join(statements)).result()
+            self.client.query("\n".join(statements)).result(timeout=JOB_TIMEOUT_S)
         finally:
             for ref in scratch:
                 self.client.delete_table(ref, not_found_ok=True)

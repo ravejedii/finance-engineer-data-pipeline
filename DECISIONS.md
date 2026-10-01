@@ -279,3 +279,18 @@ alternatives considered, why, date.
   week can't silently reload today's app DB snapshot. A test proves a
   one-shot range load equals loading the same days one at a time.
 - **Date:** 2026-09-30
+
+## 031. Loader: free appends for new files, transactions only for replacements; every wait bounded
+
+- **Decision:** Before writing a source, the loader checks whether any of its
+  files already have rows. If none do (every first load, so every CI run),
+  rows, exceptions and manifest are appended with free load jobs, manifest
+  last. Only re-sent files go through the delete-and-insert transaction.
+  Every BigQuery wait has a timeout (300 s per job, 60 s per API call), and
+  the loader prints one progress line per source.
+- **Why:** Two CI runs hung in the load step for 20 minutes with no output.
+  Using DML transactions for files that had nothing to delete was the
+  slowest, most failure-prone part of loading. Writing the manifest last
+  keeps a crashed run safe: its rows have no manifest entry, so the next run
+  sees the files as present and replaces them atomically.
+- **Date:** 2026-10-01
